@@ -4,13 +4,8 @@ Project for ECE46100 (30861) Purdue Fall 2025
 # team members
 - Josh LeBlanc
 
-
-testing commit - herbert
-
-##Team Members
-
 - Dylan Brannick
 
-# team members
+- Herbert Alexander de Bruyn
 
 - James Neff
