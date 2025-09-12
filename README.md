@@ -9,3 +9,5 @@ Project for ECE46100 (30861) Purdue Fall 2025
 - Herbert Alexander de Bruyn
 
 - James Neff
+
+# Repository Structure
