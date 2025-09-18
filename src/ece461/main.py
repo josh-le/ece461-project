@@ -1,7 +1,9 @@
 import sys
 import logging
-from ece461.logging_setup import setup as setup_logging
+from logging_setup import setup as setup_logging
 from url_file_parser import parse_url_file
+from API.hf_api import process_hf_links
+from API.github_api import process_github_links
 
 def main() -> int:
     # 1) Turn logging on/off based on env vars (LOG_LEVEL / LOG_FILE)
@@ -18,5 +20,9 @@ if __name__ == "__main__":
     links = parse_url_file("samples/sample-input.txt")
     for link in links:
         print(link.__dict__)
+    
+    # Process links with APIs
+    process_hf_links(links)
+    process_github_links(links)
 
     sys.exit(main())
