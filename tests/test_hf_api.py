@@ -12,6 +12,11 @@ def test_hf_with_parsed_urls():
     token = os.getenv("HF_TOKEN")
     if not token:
         pytest.skip("HF_TOKEN not set")
+
+    # Test API connection first
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.get("https://huggingface.co/api/models/bert-base-uncased", headers=headers)
+    assert response.status_code == 200
     
     # Use your actual URL parser
     links = parse_url_file("samples/sample-input.txt")

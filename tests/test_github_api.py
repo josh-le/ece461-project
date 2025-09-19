@@ -12,9 +12,15 @@ def test_github_with_parsed_urls():
     token = os.getenv("GITHUB_TOKEN")
     if not token:
         pytest.skip("GITHUB_TOKEN not set")
+
+    # Test API connection first
+    headers = {"Authorization": f"token {token}"}
+    response = requests.get("https://api.github.com/user", headers=headers)
+    assert response.status_code == 200
     
     # Use your actual URL parser
     links = parse_url_file("samples/sample-input.txt")
+    assert len(links) > 0
     print(f"Parsed {len(links)} links from sample file")
     
     # Get some basic metrics for GitHub repos
@@ -34,6 +40,9 @@ def test_github_with_parsed_urls():
                         print(f"  Stars: {repo.get('stargazers_count', 0)}")
                         print(f"  Forks: {repo.get('forks_count', 0)}")
                         print(f"  Issues: {repo.get('open_issues_count', 0)}")
+                        assert True
+                    else:
+                        assert False
                 except:
                     pass
     
