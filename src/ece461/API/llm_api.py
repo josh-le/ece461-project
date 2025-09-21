@@ -27,7 +27,8 @@ def query_llm(prompt: str) -> str:
         "Content-Type": "application/json"
     }
     body = {
-        "model": "llama3.1:latest",
+        "model": "gpt-oss:120b",
+        "temperature": 0.0,
         "messages": [
         {
             "role": "user",
