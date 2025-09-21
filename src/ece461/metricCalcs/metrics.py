@@ -29,10 +29,16 @@ class Metrics():
             prompt = build_ramp_up_prompt(readme_data)
             response = llm_api.query_llm(prompt)
             logging.debug("Ramp-up LLM response: %s", response)
-            print(response)
+            # Extract the ramp_up_score from the JSON response
             try:
                 m = re.search(r'"ramp_up_score"\s*:\s*([0-9]+(?:\.[0-9]+)?)', response)
-                score = float(m.group(1))
+                extracted = float(m.group(1))
+                if extracted < 0.0:
+                    score = 0.0
+                elif extracted > 1.0:
+                    score = 1.0
+                else:
+                    score = extracted
             except:
                 score = 0.0
                 logging.error("Unexpected LLM response format for model %s: %s", model_id, response)
@@ -42,22 +48,86 @@ class Metrics():
         end_time = time.perf_counter()
         latency = (end_time - start_time) * 1000  # Convert to milliseconds
         logging.info("Ramp-up metric latency for model %s: %.2f ms", model_id, latency)
-        print(score, latency)
+        
         return score, latency
     
     @staticmethod
-    def calculate_license_metric(model_url: str) -> float:
+    def calculate_license_metric(model_id: str) -> tuple[float, float]:
         """
             Calculate license compatibility score.
         """
-        pass
+        # Start latency calculation
+        start_time = time.perf_counter()
+
+        # Initiate license metric calculation
+        model_card_data = fetch_model_card_content(model_id)
+        if model_card_data == "":
+            logging.info("No model card content found for model %s", model_id)
+            score = 0.0
+        else:
+            prompt = build_license_prompt(model_card_data)
+            response = llm_api.query_llm(prompt)
+            logging.debug("License LLM response: %s", response)
+            # Extract the license_score from the JSON response
+            try:
+                m = re.search(r'"license_score"\s*:\s*([0-9]+(?:\.[0-9]+)?)', response)
+                extracted = float(m.group(1))
+                if extracted < 0.0:
+                    score = 0.0
+                elif extracted > 1.0:
+                    score = 1.0
+                else:
+                    score = extracted
+            except:
+                score = 0.0
+                logging.error("Unexpected LLM response format for model %s: %s", model_id, response)
+        
+        logging.info("License metric LLM score for model %f", score)
+        # End latency calculation
+        end_time = time.perf_counter()
+        latency = (end_time - start_time) * 1000  # Convert to milliseconds
+        logging.info("License metric latency for model %s: %.2f ms", model_id, latency)
+        
+        return score, latency
 
     @staticmethod
-    def calculate_performance_metric(model_url: str) -> float:
+    def calculate_performance_metric(model_id: str) -> tuple[float, float]:
         """
             Calculate performance benchmark score.
         """
-        pass
+        # Start latency calculation
+        start_time = time.perf_counter()
+
+        # Initiate performance metric calculation
+        model_card_data = fetch_model_card_content(model_id)
+        if model_card_data == "":
+            logging.info("No model card content found for model %s", model_id)
+            score = 0.0
+        else:
+            prompt = build_performance_prompt(model_card_data)
+            response = llm_api.query_llm(prompt)
+            logging.debug("Performance LLM response: %s", response)
+            # Extract the ramp_up_score from the JSON response
+            try:
+                m = re.search(r'"performance_score"\s*:\s*([0-9]+(?:\.[0-9]+)?)', response)
+                extracted = float(m.group(1))
+                if extracted < 0.0:
+                    score = 0.0
+                elif extracted > 1.0:
+                    score = 1.0
+                else:
+                    score = extracted
+            except:
+                score = 0.0
+                logging.error("Unexpected LLM response format for model %s: %s", model_id, response)
+        
+        logging.info("Performance metric LLM score for model %f", score)
+        # End latency calculation
+        end_time = time.perf_counter()
+        latency = (end_time - start_time) * 1000  # Convert to milliseconds
+        logging.info("Performance metric latency for model %s: %.2f ms", model_id, latency)
+
+        return score, latency
 
     @staticmethod
     def calculate_size_metric(model_id: str) -> dict:
@@ -88,6 +158,42 @@ class Metrics():
         } 
 
 ################################# Supporting Functions #################################
+# License metric calculation
+def build_license_prompt(model_card_excerpt: str) -> str:
+    """
+    Single prompt that tells the LLM to analyze the model card and also compute
+    the final normalized score for license metric. It explicitly warns about empty 
+    headers.
+    """
+    if not model_card_excerpt.strip():
+        model_card_excerpt = "(no model card content provided)"
+    return (
+        "You evaluate a model's LICENSE based on the model card text.\n"
+        "Return ONE JSON object and nothing else (no prose/markdown/fences). "
+        "JSON schema (exactly this):\n"
+        "{\n"
+        '  "license_score": <float 0..1>,\n'
+        '  "detected_license": "<SPDX or short name or null>",\n'
+        '  "compatible_with_lgpl_2_1": true|false|null,\n'
+        '  "confidence_0to1": <float 0..1>,\n'
+        '  "rationale": "<short sentence>"\n'
+        "}\n\n"
+        "How to compute license_score (clamp to [0,1]):\n"
+        "1) Compatibility (0..1) relative to LGPL-2.1 needs:\n"
+        "   - 1.0: Permissive or weak-copyleft compatible with LGPL-2.1 (MIT, BSD-2/3, Apache-2.0, LGPL-2.1/3.0, MPL-2.0, CC-BY-4.0 for weights, OpenRAIL-M if commercial use allowed).\n"
+        "   - 0.0: Non-commercial/research-only (CC-BY-NC, RAIL-NC), strong copyleft over network (AGPL-3.0), or custom terms restricting commercial redistribution.\n"
+        "   - 0.3: Unclear/unknown.\n"
+        "2) Clarity (0..1):\n"
+        "   - 1.0: Explicit SPDX ID or LICENSE link/name present.\n"
+        "   - 0.7: Clear license text in card but no SPDX or LICENSE file mentioned.\n"
+        "   - 0.3: Vague wording (e.g., 'free for research') without explicit grant.\n"
+        "   - 0.0: No license info.\n"
+        "3) Final: license_score = clamp01(0.7 * compatibility + 0.3 * clarity).\n"
+        "If multiple licenses apply (code vs weights), use the most restrictive when scoring. "
+        "Do not invent licenses; be conservative.\n\n"
+        "MODEL CARD:\n<<<\n" + model_card_excerpt + "\n>>>\n"
+    )
+
 # Performance Claims metric calculation
 def fetch_model_card_content(model_id: str) -> str:
     """
@@ -96,10 +202,9 @@ def fetch_model_card_content(model_id: str) -> str:
     token = os.getenv("HF_TOKEN")
     try:
         model_card = ModelCard.load(model_id, token=token)
-        if model_card and model_card.data and 'text' in model_card.data:
-            txt = model_card.data['text']
-            if txt.strip():
-                return txt
+        txt = (getattr(model_card, "content", "") or "").strip()
+        if txt.strip():
+            return txt
     except RepositoryNotFoundError:
         logging.debug("Model repository not found: %s", model_id)
     except HfHubHTTPError as e:
@@ -108,6 +213,47 @@ def fetch_model_card_content(model_id: str) -> str:
         logging.debug("Unexpected error fetching model card for %s: %s", model_id, e)
     return ""
 
+def build_performance_prompt(model_card_excerpt: str) -> str:
+    """
+    Single prompt that tells the LLM to analyze the model card and also compute
+    the final normalized score. It explicitly warns about empty headers.
+    """
+    if not model_card_excerpt.strip():
+        model_card_excerpt = "(no model card content provided)"
+    return (
+        "You grade a model's 'Performance Claims' from its model card text.\n"
+        "Return ONE JSON object and nothing else (no prose/markdown/fences).\n"
+        "JSON schema (exactly this):\n"
+        "{\n"
+        '  "performance_score": <float 0..1>\n'
+        "}\n\n"
+        "How to compute performance_score (benchmark-first, conservative; clamp to [0,1]):\n\n"
+        "1) Extract quantitative benchmark rows from the text:\n"
+        "   - Capture: metric name, model_value, dataset (and split if given), baseline_value (and name) if present.\n"
+        "   - Metric direction:\n"
+        "     lower-better: WER, CER, PER, perplexity, loss, MAE, MSE, RMSE\n"
+        "     higher-better: accuracy/acc, F1, precision, recall, BLEU, ROUGE, mAP, AUC, AP\n"
+        "   - Normalize obvious percents (e.g., accuracy 85 → 0.85). Ignore malformed/unclear numbers.\n\n"
+        "2) For each row with a valid baseline_value, compute relative improvement (clip to [-1,1]):\n"
+        "   - higher-better:   rel = (model_value - baseline_value) / max(1e-9, abs(baseline_value))\n"
+        "   - lower-better:    rel = (baseline_value - model_value) / max(1e-9, abs(baseline_value))\n"
+        "   - If it's unclear the same dataset/split/protocol was used, halve rel.\n\n"
+        "3) Aggregate signals:\n"
+        "   - mean_rel = average rel over all valid rows (if none, use 0).\n"
+        "   - evidence ∈ [0,1] (sum then cap at 1.0):\n"
+        "       +0.30 if code/scripts are referenced\n"
+        "       +0.30 if hyperparams/seeds/hardware are listed\n"
+        "       +0.20 if external validation is peer-reviewed (or +0.10 if third-party)\n"
+        "   - coverage ∈ [0,1]: let D = #unique datasets with numbers; coverage = min(1.0, sqrt(D)/3.0)\n\n"
+        "4) Final score (clamp to [0,1]):\n"
+        "   - If no numeric benchmarks found: performance_score ≤ 0.10.\n"
+        "   - If numbers but no baselines:   performance_score ≤ 0.25.\n"
+        "   - Else: performance_score = clamp01( 0.70*mean_rel + 0.20*evidence + 0.10*coverage )\n\n"
+        "Rules:\n"
+        "- Do not invent numbers. Be conservative when uncertain.\n"
+        "- Penalize overstated claims that aren't supported by the numbers.\n\n"
+        "MODEL CARD:\n<<<\n" + model_card_excerpt + "\n>>>\n"
+    )
 
 # Ramp-up metric calculation
 def fetch_readme_content(model_id: str) -> str:
@@ -253,9 +399,3 @@ def calculate_hardware_compatibility_scores(size_mb: float) -> dict:
         scores['aws_server'] = 0.0
     
     return scores
-
-
-
-if __name__ == "__main__":
-    model_id = "openai/whisper-tiny"
-    ramp_up = Metrics.calculate_ramp_up_metric(model_id)
