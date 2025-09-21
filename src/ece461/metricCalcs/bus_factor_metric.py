@@ -33,7 +33,7 @@ def get_doc_score(model_card_text: str) -> float:
 def get_author_score(author: str) -> float:
     """Calculates the author authority score."""
     # List of well-known organizations
-    known_orgs: List[str] = ["google", "meta", "microsoft", "openai", "bigscience", "stabilityai", "runwayml"]
+    known_orgs: List[str] = ["google", "meta", "microsoft", "openai"]
     if author in known_orgs:
         return 1.0
     # Add other checks here if needed, e.g., for GTE-validated users
