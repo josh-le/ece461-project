@@ -1,6 +1,7 @@
 # Test size metric calculation
-from src.ece461.metricCalcs.size_metric import calculate_size_metric
+from src.ece461.metricCalcs.metrics import Metrics
 
+calculate_size_metric = Metrics.calculate_size_metric
 def test_size_metric_small_model():
     # Test with a small model
     scores = calculate_size_metric("distilbert-base-uncased")

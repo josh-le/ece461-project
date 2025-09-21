@@ -6,3 +6,4 @@ Pygments==2.19.2
 pytest==8.4.2
 pytest-cov==7.0.0
 validators
+huggingface_hub
