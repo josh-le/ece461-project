@@ -17,7 +17,7 @@ def query_llm(prompt: str) -> str:
     """
 
     # Retrieve the API key from environment variables
-    jwt_token_or_api_key = os.getenv("GENAI_API_KEY")
+    jwt_token_or_api_key = os.getenv("GEN_AI_STUDIO_API_KEY")
     if not jwt_token_or_api_key:
         logging.error("GENAI_API_KEY environment variable not set.")
         raise ValueError("GENAI_API_KEY environment variable not set.")

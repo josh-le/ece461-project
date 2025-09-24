@@ -1,161 +1,270 @@
-import os, requests, logging, subprocess, re, sys, json
+import os, requests, logging, subprocess, re, sys, time
 from ece461.API import llm_api
-import time
 from huggingface_hub import hf_hub_download, ModelCard
 from huggingface_hub.errors import EntryNotFoundError, RepositoryNotFoundError, HfHubHTTPError
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, Callable, Dict, Iterable, Optional, Tuple, Union, TypedDict
 
-class Metrics():
-    @staticmethod
-    def calculate_all_metrics():
-        """
-            Run all metric calculations and return their results.
-        """
-        pass
+# ---- Metric calculation result data type ----
+class MetricValue(TypedDict, total=False):
+    score: Optional[float]
+    latency_ms: Optional[float]
+    details: Dict[str, Any]
+    ok: bool
+
+# ---- What metric functions may return (to keep adapters trivial) ----
+ReturnType = Union[Tuple[float, float], Dict[str, Any], float, int, None]
+
+# ---- Registry via decorator ----
+REGISTRY: Dict[str, Callable[..., ReturnType]] = {}
+
+def metric(name: Optional[str] = None) -> Callable[[Callable[..., ReturnType]], Callable[..., ReturnType]]:
+    """
+    Decorator to register a metric function.
+    Args:
+        name (Optional[str]): Optional name to register the metric under. If None, use function name.
+    """
+    def wrap(fn: Callable[..., ReturnType]) -> Callable[..., ReturnType]:
+        key = name or fn.__name__
+        if key in REGISTRY:
+            raise ValueError(f"Metric '{key}' already registered")
+        REGISTRY[key] = fn
+        return fn
+    return wrap
+
+# ---- Normalization: unify return shapes so the dict is predictable ----
+def normalize(ret: ReturnType) -> MetricValue:
+    """
+    Normalize various return types into a standard MetricValue dict.
+    Args:
+        ret (ReturnType): The raw return value from a metric function.
+    """
+    out: MetricValue = {"ok": True, "details": {}}
+    # Check the type of ret and extract score and latency_ms accordingly
+    # Check for tuple of two numbers first
+    if isinstance(ret, tuple) and len(ret) == 2 and all(isinstance(x, (int, float)) for x in ret):
+        score, latency_ms = float(ret[0]), float(ret[1])
+        out.update({"score": score, "latency_ms": latency_ms})
+    # Check for dictionary (HW metric)
+    elif isinstance(ret, tuple) and isinstance(ret[0], dict):
+        details = dict(ret[0])
+        latency_ms = details.get("latency_ms", float(ret[1]))
+        out.update({
+            "score": None,
+            "latency_ms": float(latency_ms) if isinstance(latency_ms, (int, float)) else None,
+            "details": details
+        })
+    # Edge cases
+    else:
+        out.update({"ok": False, "score": None, "latency": None})
     
-    @staticmethod
-    def calculate_ramp_up_metric(model_id: str) -> tuple[float, float]:
-        """
-            Calculate ramp-up time metric.
-        """
-        # Start latency calculation
-        start_time = time.perf_counter()
+    return out
 
-        # Initiate Ramp-up metric calculation
-        readme_data = fetch_readme_content(model_id)
-        if readme_data == "":
-            logging.info("No README content found for model %s", model_id)
-            score = 0.0
-        else:
-            prompt = build_ramp_up_prompt(readme_data)
-            response = llm_api.query_llm(prompt)
-            logging.debug("Ramp-up LLM response: %s", response)
-            # Extract the ramp_up_score from the JSON response
-            try:
-                m = re.search(r'"ramp_up_score"\s*:\s*([0-9]+(?:\.[0-9]+)?)', response)
-                extracted = float(m.group(1))
-                if extracted < 0.0:
-                    score = 0.0
-                elif extracted > 1.0:
-                    score = 1.0
-                else:
-                    score = extracted
-            except:
-                score = 0.0
-                logging.error("Unexpected LLM response format for model %s: %s", model_id, response)
-        
-        logging.info("Ramp-up metric LLM score for model %f", score)
-        # End latency calculation
-        end_time = time.perf_counter()
-        latency = (end_time - start_time) * 1000  # Convert to milliseconds
-        logging.info("Ramp-up metric latency for model %s: %.2f ms", model_id, latency)
-        
-        return score, latency
+# ---- Parallel runner: returns dict[name] -> MetricValue ----
+def run_metrics(
+    model_id: str,
+    include: Optional[Iterable[str]] = None,
+    exclude: Optional[Iterable[str]] = None,
+) -> Dict[str, MetricValue]:
+    """
+    Run selected metrics in parallel and return their results.
+    Args:
+        model_id (str): The model identifier (e.g., "bert-base-uncased").
+        include (Optional[Iterable[str]]): Metric names to include. If None, include all.
+        exclude (Optional[Iterable[str]]): Metric names to exclude. If None, exclude none.
+        max_workers (Optional[int]): Max number of parallel workers. Defaults to min(32, os.cpu_count() * 5).
+    """
+    selected = {k: v for k, v in REGISTRY.items()}
+    if include is not None:
+        inc = {n.strip() for n in include}
+        selected = {k: v for k, v in selected.items() if k in inc}
+    if exclude is not None:
+        exc = {n.strip() for n in exclude}
+        selected = {k: v for k, v in selected.items() if k not in exc}
+    if not selected:
+        logging.warning("No metrics selected to run.")
+        return {}
     
-    @staticmethod
-    def calculate_license_metric(model_id: str) -> tuple[float, float]:
-        """
-            Calculate license compatibility score.
-        """
-        # Start latency calculation
-        start_time = time.perf_counter()
+    # Define number of workers
+    cpu = os.cpu_count() or 4
+    max_workers = min(32, cpu * 5)
 
-        # Initiate license metric calculation
-        model_card_data = fetch_model_card_content(model_id)
-        if model_card_data == "":
-            logging.info("No model card content found for model %s", model_id)
-            score = 0.0
-        else:
-            prompt = build_license_prompt(model_card_data)
-            response = llm_api.query_llm(prompt)
-            logging.debug("License LLM response: %s", response)
-            # Extract the license_score from the JSON response
-            try:
-                m = re.search(r'"license_score"\s*:\s*([0-9]+(?:\.[0-9]+)?)', response)
-                extracted = float(m.group(1))
-                if extracted < 0.0:
-                    score = 0.0
-                elif extracted > 1.0:
-                    score = 1.0
-                else:
-                    score = extracted
-            except:
-                score = 0.0
-                logging.error("Unexpected LLM response format for model %s: %s", model_id, response)
-        
-        logging.info("License metric LLM score for model %f", score)
-        # End latency calculation
-        end_time = time.perf_counter()
-        latency = (end_time - start_time) * 1000  # Convert to milliseconds
-        logging.info("License metric latency for model %s: %.2f ms", model_id, latency)
-        
-        return score, latency
-
-    @staticmethod
-    def calculate_performance_metric(model_id: str) -> tuple[float, float]:
-        """
-            Calculate performance benchmark score.
-        """
-        # Start latency calculation
-        start_time = time.perf_counter()
-
-        # Initiate performance metric calculation
-        model_card_data = fetch_model_card_content(model_id)
-        if model_card_data == "":
-            logging.info("No model card content found for model %s", model_id)
-            score = 0.0
-        else:
-            prompt = build_performance_prompt(model_card_data)
-            response = llm_api.query_llm(prompt)
-            logging.debug("Performance LLM response: %s", response)
-            # Extract the ramp_up_score from the JSON response
-            try:
-                m = re.search(r'"performance_score"\s*:\s*([0-9]+(?:\.[0-9]+)?)', response)
-                extracted = float(m.group(1))
-                if extracted < 0.0:
-                    score = 0.0
-                elif extracted > 1.0:
-                    score = 1.0
-                else:
-                    score = extracted
-            except:
-                score = 0.0
-                logging.error("Unexpected LLM response format for model %s: %s", model_id, response)
-        
-        logging.info("Performance metric LLM score for model %f", score)
-        # End latency calculation
-        end_time = time.perf_counter()
-        latency = (end_time - start_time) * 1000  # Convert to milliseconds
-        logging.info("Performance metric latency for model %s: %.2f ms", model_id, latency)
-
-        return score, latency
-
-    @staticmethod
-    def calculate_size_metric(model_id: str) -> dict:
-        """
-            Calculate size compatibility scores for different hardware types.
-        """
+    def call(fn: Callable[..., ReturnType]) -> MetricValue:
         try:
-            total_size_mb = get_model_weight_size(model_id)
-            return calculate_hardware_compatibility_scores(total_size_mb)
+            # Try calling with model_id first
+            ret = fn(model_id=model_id)  # type: ignore[arg-type]
+            return normalize(ret)
         except Exception as e:
-            raise ValueError(f"Failed to calculate size metric for {model_id}: {str(e)}")
+            logging.exception("Metric crashed")
+            return {"ok": False, "score": None, "latency_ms": None, "details": {}}
+
+    out: Dict[str, MetricValue] = {}
+    # Start parallel execution of metrics
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        logging.info("Running %d metrics in parallel with %d workers", len(selected), max_workers)
+        result = {pool.submit(call, fn): name for name, fn in selected.items()}
+        for fut in as_completed(result):
+            out[result[fut]] = fut.result()
+
+    logging.info("Completed running metrics")
+    print(out)
     
-    @staticmethod
-    def score_code_quality(path: str) -> dict[str, object]:
-        """
-            Run pylint on Python files in 'path' and return normalized score.
-        """
-        proc = subprocess.run(
-            [sys.executable, "-m", "pylint", "--exit-zero", "--score=y", path],
-            capture_output=True, text=True
-        )
-        m = re.search(r"rated at\s+([0-9.]+)/10", proc.stdout)
-        score10 = float(m.group(1)) if m else 0.0
-        return {
-            "name": "code_quality",
-            "score": max(0.0, min(1.0, score10/10)),
-            "raw": {"pylint_score": score10}
-        } 
+    return out
+
+# ---- Metric implementations ----
+@metric("ramp_up")
+def calculate_ramp_up_metric(model_id: str) -> tuple[float, float]:
+    """
+        Calculate ramp-up time metric.
+    """
+    # Start latency calculation
+    start_time = time.perf_counter()
+
+    # Initiate Ramp-up metric calculation
+    readme_data = fetch_readme_content(model_id)
+    if readme_data == "":
+        logging.info("No README content found for model %s", model_id)
+        score = 0.0
+    else:
+        prompt = build_ramp_up_prompt(readme_data)
+        response = llm_api.query_llm(prompt)
+        logging.debug("Ramp-up LLM response: %s", response)
+        # Extract the ramp_up_score from the JSON response
+        try:
+            m = re.search(r'"ramp_up_score"\s*:\s*([0-9]+(?:\.[0-9]+)?)', response)
+            extracted = float(m.group(1))
+            if extracted < 0.0:
+                score = 0.0
+            elif extracted > 1.0:
+                score = 1.0
+            else:
+                score = extracted
+        except:
+            score = 0.0
+            logging.error("Unexpected LLM response format for model %s: %s", model_id, response)
+    
+    logging.info("Ramp-up metric LLM score for model %f", score)
+    # End latency calculation
+    end_time = time.perf_counter()
+    latency = (end_time - start_time) * 1000  # Convert to milliseconds
+    logging.info("Ramp-up metric latency for model %s: %.2f ms", model_id, latency)
+    
+    return (score, latency)
+
+@metric("license")
+def calculate_license_metric(model_id: str) -> tuple[float, float]:
+    """
+        Calculate license compatibility score.
+    """
+    # Start latency calculation
+    start_time = time.perf_counter()
+
+    # Initiate license metric calculation
+    model_card_data = fetch_model_card_content(model_id)
+    if model_card_data == "":
+        logging.info("No model card content found for model %s", model_id)
+        score = 0.0
+    else:
+        prompt = build_license_prompt(model_card_data)
+        response = llm_api.query_llm(prompt)
+        logging.debug("License LLM response: %s", response)
+        # Extract the license_score from the JSON response
+        try:
+            m = re.search(r'"license_score"\s*:\s*([0-9]+(?:\.[0-9]+)?)', response)
+            extracted = float(m.group(1))
+            if extracted < 0.0:
+                score = 0.0
+            elif extracted > 1.0:
+                score = 1.0
+            else:
+                score = extracted
+        except:
+            score = 0.0
+            logging.error("Unexpected LLM response format for model %s: %s", model_id, response)
+    
+    logging.info("License metric LLM score for model %f", score)
+    # End latency calculation
+    end_time = time.perf_counter()
+    latency = (end_time - start_time) * 1000  # Convert to milliseconds
+    logging.info("License metric latency for model %s: %.2f ms", model_id, latency)
+    
+    return (score, latency)
+
+@metric("performance")
+def calculate_performance_metric(model_id: str) -> tuple[float, float]:
+    """
+        Calculate performance benchmark score.
+    """
+    # Start latency calculation
+    start_time = time.perf_counter()
+
+    # Initiate performance metric calculation
+    model_card_data = fetch_model_card_content(model_id)
+    if model_card_data == "":
+        logging.info("No model card content found for model %s", model_id)
+        score = 0.0
+    else:
+        prompt = build_performance_prompt(model_card_data)
+        response = llm_api.query_llm(prompt)
+        logging.debug("Performance LLM response: %s", response)
+        # Extract the ramp_up_score from the JSON response
+        try:
+            m = re.search(r'"performance_score"\s*:\s*([0-9]+(?:\.[0-9]+)?)', response)
+            extracted = float(m.group(1))
+            if extracted < 0.0:
+                score = 0.0
+            elif extracted > 1.0:
+                score = 1.0
+            else:
+                score = extracted
+        except:
+            score = 0.0
+            logging.error("Unexpected LLM response format for model %s: %s", model_id, response)
+    
+    logging.info("Performance metric LLM score for model %f", score)
+    # End latency calculation
+    end_time = time.perf_counter()
+    latency = (end_time - start_time) * 1000  # Convert to milliseconds
+    logging.info("Performance metric latency for model %s: %.2f ms", model_id, latency)
+
+    return (score, latency)
+
+@metric("size")
+def calculate_size_metric(model_id: str) -> tuple[float, float]:
+    """
+        Calculate size compatibility scores for different hardware types.
+    """
+    # Start latency calculation
+    start_time = time.perf_counter()
+    try:
+        total_size_mb = get_model_weight_size(model_id)
+        score = calculate_hardware_compatibility_scores(total_size_mb)
+        # End latency calculation
+        end_time = time.perf_counter()
+        latency = (end_time - start_time) * 1000  # Convert to milliseconds
+        return (score, latency)
+    except Exception as e:
+        raise ValueError(f"Failed to calculate size metric for {model_id}: {str(e)}")
+
+@metric("code_quality")
+def calculate_code_quality(path: str) -> tuple[float, float]:
+    """
+        Run pylint on Python files in 'path' and return normalized score.
+    """
+    # Start latency calculation
+    start_time = time.perf_counter()
+    proc = subprocess.run(
+        [sys.executable, "-m", "pylint", "--exit-zero", "--score=y", path],
+        capture_output=True, text=True
+    )
+    m = re.search(r"rated at\s+([0-9.]+)/10", proc.stdout)
+    score10 = float(m.group(1)) if m else 0.0
+
+    # End latency calculation
+    end_time = time.perf_counter()
+    latency = (end_time - start_time) * 1000  # Convert to milliseconds
+    print(max(0.0, min(1.0, score10/10)))
+    return (max(0.0, min(1.0, score10/10)), latency)
 
 ################################# Supporting Functions #################################
 # License metric calculation
