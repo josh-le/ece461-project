@@ -1,12 +1,3 @@
-# from huggingface_hub import ModelCard
-#
-# card = ModelCard.load('openai/whisper-tiny')
-#
-# model_data = card.data.to_dict()
-#
-# model_text = card.text
-#
-# print(card.content)
 import math
 from typing import List, Dict, Optional
 from huggingface_hub import model_info
@@ -37,7 +28,7 @@ def get_author_score(author: str) -> float:
     if author in known_orgs:
         return 1.0
     # Add other checks here if needed, e.g., for GTE-validated users
-    return 0.2 # Default for individual users
+    return 0.5 # Default for individual users
 
 def get_repro_score(filenames: List[str]) -> float:
     """Calculates the reproducibility score based on repository files."""
