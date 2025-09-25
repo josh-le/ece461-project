@@ -247,24 +247,78 @@ def calculate_size_metric(model_id: str) -> tuple[float, float]:
         raise ValueError(f"Failed to calculate size metric for {model_id}: {str(e)}")
 
 @metric("code_quality")
-def calculate_code_quality(path: str) -> tuple[float, float]:
+def calculate_code_quality(model_id: str) -> tuple[float, float]:
     """
-        Run pylint on Python files in 'path' and return normalized score.
+        Calculate code quality score using pylint.
     """
-    # Start latency calculation
-    start_time = time.perf_counter()
+    t = time.perf_counter()
+    tok = os.getenv("HF_TOKEN") or os.getenv("HF_Key")
+    hdr = {"Authorization": f"Bearer {tok}"} if tok else {}
+
+    #List repo files
+    try:
+        j = requests.get(
+            f"https://huggingface.co/api/models/{model_id}/tree/main",
+            headers=hdr, timeout=30
+        ).json()
+    except Exception:
+        return (0.0, (time.perf_counter() - t) * 1000.0)
+
+    #Makes temporary folder in current working directory
+    tmp = os.path.join(os.getcwd(), f"_cq_{int(t*1000)}")
+    os.makedirs(tmp, exist_ok=True)
+
+    #Grab only .py files
+    py = 0
+    for f in (j if isinstance(j, list) else []):
+        p = f.get("path", "")
+        if f.get("type") == "file" and p.endswith(".py"):
+            try:
+                src = hf_hub_download(repo_id=model_id, filename=p, token=tok)
+                dst = os.path.join(tmp, p)
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                with open(src, "rb") as r, open(dst, "wb") as w:
+                    w.write(r.read())
+                py += 1
+            except Exception:
+                pass
+
+    #If theres nothing to lint
+    if py == 0:
+        lat = (time.perf_counter() - t) * 1000.0
+        for root, dirs, files in os.walk(tmp, topdown=False):
+            for n in files:
+                try: os.remove(os.path.join(root, n))
+                except: pass
+            for d in dirs:
+                try: os.rmdir(os.path.join(root, d))
+                except: pass
+        try: os.rmdir(tmp)
+        except: pass
+        return (0.0, lat)
+
+    #Running pylint
     proc = subprocess.run(
-        [sys.executable, "-m", "pylint", "--exit-zero", "--score=y", path],
+        [sys.executable, "-m", "pylint", "--exit-zero", "--score=y", tmp],
         capture_output=True, text=True
     )
-    m = re.search(r"rated at\s+([0-9.]+)/10", proc.stdout)
-    score10 = float(m.group(1)) if m else 0.0
+    m = re.search(r"rated at\s*([0-9.]+)/10", proc.stdout or "")
+    score01 = max(0.0, min(1.0, (float(m.group(1)) if m else 0.0) / 10.0))
+    lat = (time.perf_counter() - t) * 1000.0
 
-    # End latency calculation
-    end_time = time.perf_counter()
-    latency = (end_time - start_time) * 1000  # Convert to milliseconds
-    print(max(0.0, min(1.0, score10/10)))
-    return (max(0.0, min(1.0, score10/10)), latency)
+    #Cleanup the folders
+    for root, dirs, files in os.walk(tmp, topdown=False):
+        for n in files:
+            try: os.remove(os.path.join(root, n))
+            except: pass
+        for d in dirs:
+            try: os.rmdir(os.path.join(root, d))
+            except: pass
+    try: os.rmdir(tmp)
+    except: pass
+
+    return (score01, lat)
+
 
 ################################# Supporting Functions #################################
 # License metric calculation
