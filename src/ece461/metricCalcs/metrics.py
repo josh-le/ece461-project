@@ -349,6 +349,41 @@ def calculate_code_quality(path: str) -> tuple[float, float]:
     print(max(0.0, min(1.0, score10/10)))
     return (max(0.0, min(1.0, score10/10)), latency)
 
+@metric("dataset_and_code_quality")
+def calculate_dataset_and_code_score(dataset_url: str, code_url: str) -> tuple[float, float]:
+    """
+        Calculate the dataset and code quality score
+    """
+    start_time = time.perf_counter()
+
+    if dataset_url is None and code_url is None:
+        score = 0.0
+    else:
+        prompt = build_dataset_code_prompt(dataset_url, code_url)
+        try:
+            response = llm_api.query_llm(prompt)
+            logging.debug("Dataset and code LLM response: %s", response)
+            
+            # Extract the score from the JSON response
+            m = re.search(r'"dataset_code_score"\s*:\s*([0-9]+(?:\.[0-9]+)?)', response)
+            if m:
+                extracted = float(m.group(1))
+                score = max(0.0, min(1.0, extracted))
+            else:
+                logging.error("Could not extract dataset_code_score from LLM response")
+                score = 0.0
+        except Exception as e:
+            logging.error("Error analyzing dataset and code: %s", e)
+            score = 0.0
+    
+    logging.info("Dataset and code metric score: %.3f", score)
+    
+    # End latency calculation
+    end_time = time.perf_counter()
+    latency = round((end_time - start_time) * 1000)  # Convert to milliseconds
+        
+    return score, latency
+
 ################################# Supporting Functions #################################
 # License metric calculation
 def build_license_prompt(model_card_excerpt: str) -> str:
@@ -385,6 +420,43 @@ def build_license_prompt(model_card_excerpt: str) -> str:
         "Do not invent licenses; be conservative.\n\n"
         "MODEL CARD:\n<<<\n" + model_card_excerpt + "\n>>>\n"
     )
+
+# Dataset and Code metric calculation
+def build_dataset_code_prompt(dataset_url: str, code_url: str) -> str:
+    """
+    Build LLM prompt for analyzing dataset and code availability and quality from URLs.
+    """
+    return (
+        "You evaluate a model's DATASET AND CODE AVAILABILITY based on the provided URLs.\n"
+        "Return ONE JSON object and nothing else (no prose/markdown/fences).\n"
+        "JSON schema (exactly this):\n"
+        "{\n"
+        '  "dataset_code_score": <float 0..1>,\n'
+        '  "has_dataset": true|false,\n'
+        '  "has_code": true|false,\n'
+        '  "dataset_quality": <float 0..1>,\n'
+        '  "code_quality": <float 0..1>,\n'
+        '  "rationale": "<short sentence>"\n'
+        "}\n\n"
+        "How to compute dataset_code_score (clamp to [0,1]):\n"
+        "1) Dataset Availability (0.25): Does the model have a dataset URL provided?\n"
+        "   - 0.25 if valid dataset URL present, 0.0 if None or invalid\n"
+        "2) Code Availability (0.25): Does the model have a code URL provided?\n"
+        "   - 0.25 if valid code URL present, 0.0 if None or invalid\n"
+        "3) Dataset Quality (0.25): Based on URL, assess likely quality:\n"
+        "   - HuggingFace datasets: 0.2-0.25 (well-structured platform)\n"
+        "   - GitHub with clear dataset structure: 0.15-0.2\n"
+        "   - Other platforms: 0.1-0.15\n"
+        "4) Code Quality (0.25): Based on URL, assess likely quality:\n"
+        "   - GitHub repos from known orgs (google, microsoft, etc.): 0.2-0.25\n"
+        "   - HuggingFace model repos: 0.15-0.2\n"
+        "   - Other GitHub repos: 0.1-0.15\n\n"
+        "Final score = dataset_availability + code_availability + dataset_quality + code_quality\n"
+        "Be conservative. Only give full points for clearly recognizable, high-quality platforms.\n\n"
+        "Dataset URL Provided:\n" + dataset_url + "\n"
+        "Code URL Provided:\n" + code_url + "\n"
+    )
+    
 
 # Performance Claims metric calculation
 def fetch_model_card_content(model_id: str) -> str:
