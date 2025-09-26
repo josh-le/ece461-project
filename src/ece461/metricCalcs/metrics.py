@@ -252,72 +252,48 @@ def calculate_code_quality(model_id: str) -> tuple[float, float]:
         Calculate code quality score using pylint.
     """
     t = time.perf_counter()
-    tok = os.getenv("HF_TOKEN") or os.getenv("HF_Key")
-    hdr = {"Authorization": f"Bearer {tok}"} if tok else {}
 
-    #List repo files
-    try:
-        j = requests.get(
-            f"https://huggingface.co/api/models/{model_id}/tree/main",
-            headers=hdr, timeout=30
-        ).json()
-    except Exception:
+    #Only handle GitHub repos
+    if "github.com" not in model_id:
         return (0.0, (time.perf_counter() - t) * 1000.0)
 
-    #Makes temporary folder in current working directory
     tmp = os.path.join(os.getcwd(), f"_cq_{int(t*1000)}")
     os.makedirs(tmp, exist_ok=True)
 
-    #Grab only .py files
-    py = 0
-    for f in (j if isinstance(j, list) else []):
-        p = f.get("path", "")
-        if f.get("type") == "file" and p.endswith(".py"):
-            try:
-                src = hf_hub_download(repo_id=model_id, filename=p, token=tok)
-                dst = os.path.join(tmp, p)
-                os.makedirs(os.path.dirname(dst), exist_ok=True)
-                with open(src, "rb") as r, open(dst, "wb") as w:
-                    w.write(r.read())
-                py += 1
-            except Exception:
-                pass
+    try:
+        #Shallow clone
+        proc = subprocess.run(
+            ["git", "clone", "--depth", "1", model_id, tmp],
+            capture_output=True, text=True
+        )
+        if proc.returncode != 0:
+            return (0.0, (time.perf_counter() - t) * 1000.0)
 
-    #If theres nothing to lint
-    if py == 0:
-        lat = (time.perf_counter() - t) * 1000.0
-        for root, dirs, files in os.walk(tmp, topdown=False):
-            for n in files:
-                try: os.remove(os.path.join(root, n))
-                except: pass
-            for d in dirs:
-                try: os.rmdir(os.path.join(root, d))
-                except: pass
-        try: os.rmdir(tmp)
-        except: pass
-        return (0.0, lat)
+        #Run pylint
+        out = subprocess.run(
+            [sys.executable, "-m", "pylint", "--exit-zero", "--score=y", tmp],
+            capture_output=True, text=True
+        ).stdout or ""
+        m = re.search(r"rated at\s*([0-9.]+)/10", out)
+        score = float(m.group(1))/10.0 if m else 0.0
+        score = max(0.0, min(1.0, score))
+    except Exception:
+        score = 0.0
 
-    #Running pylint
-    proc = subprocess.run(
-        [sys.executable, "-m", "pylint", "--exit-zero", "--score=y", tmp],
-        capture_output=True, text=True
-    )
-    m = re.search(r"rated at\s*([0-9.]+)/10", proc.stdout or "")
-    score01 = max(0.0, min(1.0, (float(m.group(1)) if m else 0.0) / 10.0))
     lat = (time.perf_counter() - t) * 1000.0
 
-    #Cleanup the folders
+    #Cleanup
     for root, dirs, files in os.walk(tmp, topdown=False):
-        for n in files:
+        for n in files: 
             try: os.remove(os.path.join(root, n))
             except: pass
-        for d in dirs:
+        for d in dirs: 
             try: os.rmdir(os.path.join(root, d))
             except: pass
     try: os.rmdir(tmp)
     except: pass
 
-    return (score01, lat)
+    return (score, lat)
 
 
 ################################# Supporting Functions #################################
