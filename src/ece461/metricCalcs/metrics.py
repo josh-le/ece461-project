@@ -249,44 +249,27 @@ def calculate_size_metric(model_id: str) -> tuple[float, float]:
 @metric("code_quality")
 def calculate_code_quality(model_id: str) -> tuple[float, float]:
     """
-    Calculate code quality score using pylint.
-    Always expects a HuggingFace model ID.
-    Tries to extract the GitHub repo from the model card.
-    Returns (0.0, latency) if no repo is found.
+        Calculate code quality score using pylint.
     """
     t = time.perf_counter()
-    repo_url = None
-    try:
-        token = os.getenv("HF_TOKEN")
-        model_card = ModelCard.load(model_id, token=token)
-        # Try repository field first
-        repo_url = getattr(model_card, "data", {}).get("repository", None)
-        # Fallback: search for github.com in card content
-        if not repo_url:
-            content = getattr(model_card, "content", "") or ""
-            m = re.search(r"https://github\.com/[^\s\)]+", content)
-            if m:
-                repo_url = m.group(0)
-    except Exception:
-        repo_url = None
 
-    if not repo_url or "github.com" not in repo_url:
-        #No repo found, return 0 score and latency
+    #Only handle GitHub repos
+    if "github.com" not in model_id:
         return (0.0, (time.perf_counter() - t) * 1000.0)
 
     tmp = os.path.join(os.getcwd(), f"_cq_{int(t*1000)}")
     os.makedirs(tmp, exist_ok=True)
 
     try:
-        #Shallow clone the repo
+        #Shallow clone
         proc = subprocess.run(
-            ["git", "clone", "--depth", "1", repo_url, tmp],
+            ["git", "clone", "--depth", "1", model_id, tmp],
             capture_output=True, text=True
         )
         if proc.returncode != 0:
             return (0.0, (time.perf_counter() - t) * 1000.0)
 
-        #Run pylint on the cloned repo
+        #Run pylint
         out = subprocess.run(
             [sys.executable, "-m", "pylint", "--exit-zero", "--score=y", tmp],
             capture_output=True, text=True
@@ -300,17 +283,15 @@ def calculate_code_quality(model_id: str) -> tuple[float, float]:
     lat = (time.perf_counter() - t) * 1000.0
 
     #Cleanup
-    try:
-        for root, dirs, files in os.walk(tmp, topdown=False):
-            for n in files: 
-                try: os.remove(os.path.join(root, n))
-                except: pass
-            for d in dirs: 
-                try: os.rmdir(os.path.join(root, d))
-                except: pass
-        os.rmdir(tmp)
-    except Exception:
-        pass
+    for root, dirs, files in os.walk(tmp, topdown=False):
+        for n in files: 
+            try: os.remove(os.path.join(root, n))
+            except: pass
+        for d in dirs: 
+            try: os.rmdir(os.path.join(root, d))
+            except: pass
+    try: os.rmdir(tmp)
+    except: pass
 
     return (score, lat)
 
