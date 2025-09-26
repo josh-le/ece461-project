@@ -17,3 +17,22 @@ def extract_github_id(url):
         return f"{parts[3]}/{parts[4]}"
     
     return None
+
+def extract_gitlab_id(url):
+    """Extract repository ID from GitLab URL"""
+    if not url or 'gitlab.com' not in url:
+        return None
+    
+    clean_url = url.strip()
+    if clean_url.endswith('.git'):
+        clean_url = clean_url[:-4]
+    
+    parts = clean_url.split('/')
+    if len(parts) >= 5:
+        return f"{parts[3]}/{parts[4]}"
+    
+    # if parts[3] is a user, then we need to use parts[4] and parts[5]
+    if parts[3] == 'users':
+        return f"{parts[4]}/{parts[5]}"
+    
+    return None

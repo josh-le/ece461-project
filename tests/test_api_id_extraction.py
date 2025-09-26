@@ -6,7 +6,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from ece461.API.hf_api import extract_hf_model_id, extract_hf_dataset_id
-from ece461.API.github_api import extract_github_id
+from ece461.API.github_api import extract_github_id, extract_gitlab_id
 
 
 class TestHuggingFaceIDExtraction:
@@ -99,6 +99,18 @@ class TestGitHubIDExtraction:
         url = "  https://github.com/tensorflow/tensorflow  "
         result = extract_github_id(url)
         assert result == "tensorflow/tensorflow"
+
+    def test_extract_gitlab_repo_basic(self):
+        """Test basic GitLab repo URL extraction"""
+        url = "https://gitlab.com/gitlab-org/gitlab"
+        result = extract_gitlab_id(url)
+        assert result == "gitlab-org/gitlab"
+    
+    def test_extract_gitlab_repo_with_git_suffix(self):
+        """Test GitLab repo URL with .git suffix"""
+        url = "https://gitlab.com/gitlab-org/gitlab.git"
+        result = extract_gitlab_id(url)
+        assert result == "gitlab-org/gitlab"
     
     def test_extract_github_invalid_urls(self):
         """Test invalid URLs return None"""
