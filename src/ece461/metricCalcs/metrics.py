@@ -245,6 +245,55 @@ def calculate_size_metric(model_id: str) -> tuple[float, float]:
         return (score, latency)
     except Exception as e:
         raise ValueError(f"Failed to calculate size metric for {model_id}: {str(e)}")
+        
+@metric("dataset_code")
+def calculate_dataset_code_metric(model_id: str) -> tuple[float, float]:
+    """
+        Calculate dataset and code availability and quality score.
+    """
+    # Start latency calculation
+    start_time = time.perf_counter()
+    
+    # Fetch model card to extract URLs
+    model_card_data = fetch_model_card_content(model_id)
+    if model_card_data == "":
+        logging.info("No model card content found for model %s", model_id)
+        score = 0.0
+    else:
+        # Extract URLs from model card (you'd need to implement this)
+        extracted_urls = extract_urls_from_model_card(model_card_data)
+        
+        # Build the URLs info for LLM analysis
+        urls_info = f"Model URL: https://huggingface.co/{model_id}\n"
+        urls_info += f"Dataset URL: {extracted_urls.get('dataset', 'None')}\n"
+        urls_info += f"Code URL: {extracted_urls.get('code', 'None')}"
+        
+        prompt = build_dataset_code_prompt(urls_info)
+        
+        try:
+            response = llm_api.query_llm(prompt)
+            logging.debug("Dataset and code LLM response: %s", response)
+            
+            # Extract the score from the JSON response
+            m = re.search(r'"dataset_code_score"\s*:\s*([0-9]+(?:\.[0-9]+)?)', response)
+            if m:
+                extracted = float(m.group(1))
+                score = max(0.0, min(1.0, extracted))
+            else:
+                logging.error("Could not extract dataset_code_score from LLM response")
+                score = 0.0
+        except Exception as e:
+            logging.error("Error analyzing dataset and code: %s", e)
+            score = 0.0
+    
+    logging.info("Dataset and code metric score: %.3f", score)
+    
+    # End latency calculation
+    end_time = time.perf_counter()
+    latency = round((end_time - start_time) * 1000)  # Convert to milliseconds
+    logging.info("Dataset and code metric latency for model %s: %d ms", model_id, latency)
+    
+    return score, latency
 
 @metric("code_quality")
 def calculate_code_quality(path: str) -> tuple[float, float]:
@@ -267,6 +316,42 @@ def calculate_code_quality(path: str) -> tuple[float, float]:
     return (max(0.0, min(1.0, score10/10)), latency)
 
 ################################# Supporting Functions #################################
+
+# Dataset and Code metric calculation
+def build_dataset_code_prompt(urls_info: str) -> str:
+    """
+    Build LLM prompt for analyzing dataset and code availability and quality from URLs.
+    """
+    return (
+        "You evaluate a model's DATASET AND CODE AVAILABILITY based on the provided URLs.\n"
+        "Return ONE JSON object and nothing else (no prose/markdown/fences).\n"
+        "JSON schema (exactly this):\n"
+        "{\n"
+        '  "dataset_code_score": <float 0..1>,\n'
+        '  "has_dataset": true|false,\n'
+        '  "has_code": true|false,\n'
+        '  "dataset_quality": <float 0..1>,\n'
+        '  "code_quality": <float 0..1>,\n'
+        '  "rationale": "<short sentence>"\n'
+        "}\n\n"
+        "How to compute dataset_code_score (clamp to [0,1]):\n"
+        "1) Dataset Availability (0.25): Does the model have a dataset URL provided?\n"
+        "   - 0.25 if valid dataset URL present, 0.0 if None or invalid\n"
+        "2) Code Availability (0.25): Does the model have a code URL provided?\n"
+        "   - 0.25 if valid code URL present, 0.0 if None or invalid\n"
+        "3) Dataset Quality (0.25): Based on URL, assess likely quality:\n"
+        "   - HuggingFace datasets: 0.2-0.25 (well-structured platform)\n"
+        "   - GitHub with clear dataset structure: 0.15-0.2\n"
+        "   - Other platforms: 0.1-0.15\n"
+        "4) Code Quality (0.25): Based on URL, assess likely quality:\n"
+        "   - GitHub repos from known orgs (google, microsoft, etc.): 0.2-0.25\n"
+        "   - HuggingFace model repos: 0.15-0.2\n"
+        "   - Other GitHub repos: 0.1-0.15\n\n"
+        "Final score = dataset_availability + code_availability + dataset_quality + code_quality\n"
+        "Be conservative. Only give full points for clearly recognizable, high-quality platforms.\n\n"
+        "URLs PROVIDED:\n" + urls_info + "\n"
+    )
+    
 # License metric calculation
 def build_license_prompt(model_card_excerpt: str) -> str:
     """
@@ -508,3 +593,21 @@ def calculate_hardware_compatibility_scores(size_mb: float) -> dict:
         scores['aws_server'] = 0.0
     
     return scores
+
+def extract_urls_from_model_card(model_card_content: str) -> dict:
+    """Extract dataset and code URLs from model card content"""
+    urls = {'dataset': None, 'code': None}
+
+    # Use regex to find GitHub and HuggingFace URLs
+    code_pattern = r'https://(?:www\.)?(?:github|gitlab)\.com/[^\s)]+|https://huggingface\.co/spaces/[^\s)]+'
+    hf_dataset_pattern = r'https://huggingface\.co/datasets/[^\s)]+'
+
+    code_urls = re.findall(code_pattern, model_card_content)
+    dataset_urls = re.findall(hf_dataset_pattern, model_card_content)
+
+    if dataset_urls:
+        urls['dataset'] = dataset_urls[0]  # Take first dataset URL found
+    if code_urls:
+        urls['code'] = code_urls[0]  # Take first codebase URL found
+        
+    return urls
