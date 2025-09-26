@@ -6,11 +6,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from ece461.API.hf_api import extract_hf_model_id, extract_hf_dataset_id
-<<<<<<< HEAD
 from ece461.API.github_api import extract_github_id, extract_gitlab_id
-=======
-from ece461.API.github_api import extract_github_id
->>>>>>> 67f3a39c8de136351be9fa4cd156d2079c5ab961
 
 
 class TestHuggingFaceIDExtraction:
