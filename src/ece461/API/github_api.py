@@ -17,6 +17,7 @@ def extract_github_id(url):
         return f"{parts[3]}/{parts[4]}"
     
     return None
+<<<<<<< HEAD
 
 def extract_gitlab_id(url):
     """Extract repository ID from GitLab URL"""
@@ -36,3 +37,5 @@ def extract_gitlab_id(url):
         return f"{parts[4]}/{parts[5]}"
     
     return None
+=======
+>>>>>>> 67f3a39c8de136351be9fa4cd156d2079c5ab961
