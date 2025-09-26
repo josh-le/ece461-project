@@ -23,5 +23,8 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run tests with pytest
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GEN_AI_STUDIO_API_KEY: ${{ secrets.GEN_AI_STUDIO_API_KEY }}
         run: |
           pytest
