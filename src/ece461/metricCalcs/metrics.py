@@ -330,24 +330,54 @@ def calculate_size_metric(model_id: str) -> tuple[float, float]:
         raise ValueError(f"Failed to calculate size metric for {model_id}: {str(e)}")
 
 @metric("code_quality")
-def calculate_code_quality(path: str) -> tuple[float, float]:
+def calculate_code_quality(model_id: str) -> tuple[float, float]:
     """
-        Run pylint on Python files in 'path' and return normalized score.
+        Calculate code quality score using pylint.
     """
-    # Start latency calculation
-    start_time = time.perf_counter()
-    proc = subprocess.run(
-        [sys.executable, "-m", "pylint", "--exit-zero", "--score=y", path],
-        capture_output=True, text=True
-    )
-    m = re.search(r"rated at\s+([0-9.]+)/10", proc.stdout)
-    score10 = float(m.group(1)) if m else 0.0
+    t = time.perf_counter()
 
-    # End latency calculation
-    end_time = time.perf_counter()
-    latency = (end_time - start_time) * 1000  # Convert to milliseconds
-    print(max(0.0, min(1.0, score10/10)))
-    return (max(0.0, min(1.0, score10/10)), latency)
+    #Only handle GitHub repos
+    if "github.com" not in model_id:
+        return (0.0, (time.perf_counter() - t) * 1000.0)
+
+    tmp = os.path.join(os.getcwd(), f"_cq_{int(t*1000)}")
+    os.makedirs(tmp, exist_ok=True)
+
+    try:
+        #Shallow clone
+        proc = subprocess.run(
+            ["git", "clone", "--depth", "1", model_id, tmp],
+            capture_output=True, text=True
+        )
+        if proc.returncode != 0:
+            return (0.0, (time.perf_counter() - t) * 1000.0)
+
+        #Run pylint
+        out = subprocess.run(
+            [sys.executable, "-m", "pylint", "--exit-zero", "--score=y", tmp],
+            capture_output=True, text=True
+        ).stdout or ""
+        m = re.search(r"rated at\s*([0-9.]+)/10", out)
+        score = float(m.group(1))/10.0 if m else 0.0
+        score = max(0.0, min(1.0, score))
+    except Exception:
+        score = 0.0
+
+    lat = (time.perf_counter() - t) * 1000.0
+
+    #Cleanup
+    for root, dirs, files in os.walk(tmp, topdown=False):
+        for n in files: 
+            try: os.remove(os.path.join(root, n))
+            except: pass
+        for d in dirs: 
+            try: os.rmdir(os.path.join(root, d))
+            except: pass
+    try: os.rmdir(tmp)
+    except: pass
+
+    return (score, lat)
+
 
 ################################# Supporting Functions #################################
 # License metric calculation
