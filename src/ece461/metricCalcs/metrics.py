@@ -361,20 +361,18 @@ def calculate_code_quality(model: ModelLinks) -> tuple[float, float]:
     return (max(0.0, min(1.0, score10/10)), latency)
 
 @metric("dataset_and_code_quality")
-def calculate_dataset_and_code_score(dataset_url: str, code_url: str) -> tuple[float, float]:
+def calculate_dataset_and_code_score(model: ModelLinks) -> tuple[float, float]:
     """
         Calculate the dataset and code quality score
     """
     start_time = time.perf_counter()
-
-    if dataset_url is None and code_url is None:
+    if model.dataset is None and model.code is None:
         score = 0.0
     else:
-        prompt = build_dataset_code_prompt(dataset_url, code_url)
+        prompt = build_dataset_code_prompt(model.dataset, model.code)
         try:
             response = llm_api.query_llm(prompt)
             logging.debug("Dataset and code LLM response: %s", response)
-            
             # Extract the score from the JSON response
             m = re.search(r'"dataset_code_score"\s*:\s*([0-9]+(?:\.[0-9]+)?)', response)
             if m:
@@ -396,18 +394,18 @@ def calculate_dataset_and_code_score(dataset_url: str, code_url: str) -> tuple[f
     return score, latency
 
 @metric("dataset_quality")
-def calculate_dataset_quality(dataset_url: str) -> tuple[float, float]:
+def calculate_dataset_quality(model: ModelLinks) -> tuple[float, float]:
     """
         Calculate dataset quality metric based on dataset URL.
     """
     start_time = time.perf_counter()
     
-    if dataset_url is None or not dataset_url.strip():
+    if model.dataset is None or not model.dataset.strip():
         score = 0.0
         logging.info("No dataset URL provided, score = 0.0")
     else:
         try:
-            prompt = build_dataset_quality_prompt(dataset_url)
+            prompt = build_dataset_quality_prompt(model.dataset)
             response = llm_api.query_llm(prompt)
             logging.debug("Dataset quality LLM response: %s", response)
             
