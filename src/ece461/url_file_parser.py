@@ -1,8 +1,8 @@
-from typing import List
+from typing import List, Optional
 import validators, logging, os, sys
 
 class ModelLinks:
-    def __init__(self, model: str, dataset: str | None = None, code: str | None = None, model_id: str = "") -> None:
+    def __init__(self, model: str, dataset: Optional[str] = None, code: Optional[str] = None, model_id: str = "") -> None:
         self.model = model
         self.dataset = dataset
         self.code = code
