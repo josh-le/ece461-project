@@ -1,5 +1,6 @@
 import sys
 import logging
+import json
 from ece461.logging_setup import setup as setup_logging
 from ece461.url_file_parser import parse_url_file, ModelLinks
 from ece461.metricCalcs import metrics as met
@@ -18,7 +19,7 @@ def main() -> int:
     for m in models:
         results = met.run_metrics(m)
         # Create dict of metric results to pass to net score
-        metrics_dict = {}
+        metrics_dict = {"NAME": m.model, "CATEGORY": "MODEL"}
         for metric_name, metric_result in results.items():
             if metric_name == 'license':
                 metrics_dict['license'] = metric_result.get('score') or 0.0
@@ -48,6 +49,10 @@ def main() -> int:
         net_score, latency = calculate_net_score(metrics_dict)
         metrics_dict['net_score'] = net_score
         metrics_dict['net_score_latency'] = latency
+
+        for obj in metrics_dict:
+            line = json.dumps(obj)
+            print(line)
 
     return 0
 
