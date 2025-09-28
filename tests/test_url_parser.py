@@ -1,15 +1,15 @@
 from pathlib import Path
-import pytest
+import pytest, validators
 from ece461 import url_file_parser as ufp
 
 def test_validate_url_basic() -> None:
     # Accepts http/https and (currently) ftp per validators.url
-    assert ufp.validate_url("https://example.com")
-    assert ufp.validate_url("http://example.com")
-    assert ufp.validate_url("ftp://example.com")
+    assert validators.url("https://example.com")
+    assert validators.url("http://example.com")
+    assert validators.url("ftp://example.com")
 
     # For malformed, DO NOT use `is False` — the function returns a falsy object, not the literal False
-    assert not ufp.validate_url("not_a_url")   # this will pass even if it's a ValidationError object
+    assert not validators.url("not_a_url")   # this will pass even if it's a ValidationError object
 
 def test_parse_url_file_happy_path(tmp_path: Path) -> None:
     csv = (

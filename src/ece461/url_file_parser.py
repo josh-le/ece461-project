@@ -19,7 +19,10 @@ def parse_url_file(path: str) -> List[ModelLinks]:
         lines: List[str] = file.readlines()
 
     for line in lines:
-      
+        stuff: List[str] = line.strip().split(",")
+        if len(stuff) != 3:
+            raise IndexError
+
         code, dataset, model = line.strip().split(",")
 
         if not model:
