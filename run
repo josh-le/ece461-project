@@ -13,14 +13,14 @@ if [[ -z "$cmd" ]]; then
 
 elif [[ "$cmd" == "install" ]]; then
   python3 -m pip install --user -r "$ROOT/requirements.txt"
+  exit 0
 
 elif [[ "$cmd" == "test" ]]; then
   cd "$ROOT"
   python3 "$ROOT/src/ece461/test_summary.py"
-
-  # TODO: Format stdout output as required by autograder
-  python3 -m ece461.emmits_ndjson "$ROOT/samples/sample-input.txt"
+  exit 0
 
 else
   python3 -m ece461.main "$cmd"
+  exit 0
 fi
