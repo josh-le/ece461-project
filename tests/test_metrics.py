@@ -9,7 +9,7 @@ from huggingface_hub.errors import (
 
 # ----------------- Helpers to safely patch & restore the registry -----------------
 
-def _swap_registry(temp: dict[str, Any]):
+def swap_registry(temp: dict[str, Any]):
     """Context manager to temporarily replace REGISTRY."""
     class _Ctx:
         def __enter__(self) -> None:
@@ -43,7 +43,7 @@ def test_run_metrics_include_exclude_and_empty() -> None:
     def m2(model_id: str) -> tuple[dict[str, Any], float]:
         return ({"k": "v"}, 3.0)
 
-    with _swap_registry({"m1": m1, "m2": m2}):
+    with swap_registry({"m1": m1, "m2": m2}):
         out = met.run_metrics("dummy", include=["m1"])
         assert set(out.keys()) == {"m1"} and out["m1"]["score"] == 0.2
 
