@@ -384,6 +384,41 @@ def calculate_dataset_and_code_score(dataset_url: str, code_url: str) -> tuple[f
         
     return score, latency
 
+@metric("dataset_quality")
+def calculate_dataset_quality(dataset_url: str) -> tuple[float, float]:
+    """
+        Calculate dataset quality metric based on dataset URL.
+    """
+    start_time = time.perf_counter()
+    
+    if dataset_url is None or not dataset_url.strip():
+        score = 0.0
+        logging.info("No dataset URL provided, score = 0.0")
+    else:
+        try:
+            prompt = build_dataset_quality_prompt(dataset_url)
+            response = llm_api.query_llm(prompt)
+            logging.debug("Dataset quality LLM response: %s", response)
+            
+            # Extract the score from the JSON response
+            m = re.search(r'"dataset_quality_score"\s*:\s*([0-9]+(?:\.[0-9]+)?)', response)
+            if m:
+                extracted = float(m.group(1))
+                score = max(0.0, min(1.0, extracted))
+            else:
+                logging.error("Could not extract dataset_quality_score from LLM response")
+                score = 0.0
+        except Exception as e:
+            logging.error("Error analyzing dataset quality: %s", e)
+            score = 0.0
+    
+    logging.info("Dataset quality metric score: %.3f", score)
+    
+    end_time = time.perf_counter()
+    latency = round((end_time - start_time) * 1000)
+    
+    return score, latency
+
 ################################# Supporting Functions #################################
 # License metric calculation
 def build_license_prompt(model_card_excerpt: str) -> str:
@@ -453,10 +488,59 @@ def build_dataset_code_prompt(dataset_url: str, code_url: str) -> str:
         "   - Other GitHub repos: 0.1-0.15\n\n"
         "Final score = dataset_availability + code_availability + dataset_quality + code_quality\n"
         "Be conservative. Only give full points for clearly recognizable, high-quality platforms.\n\n"
-        "Dataset URL Provided:\n" + dataset_url + "\n"
-        "Code URL Provided:\n" + code_url + "\n"
+        "Dataset URL Provided:\n" + (dataset_url if dataset_url else "None") + "\n"
+        "Code URL Provided:\n" + (code_url if code_url else "None") + "\n"
     )
-    
+
+# Dataset quality metric calculation
+def build_dataset_quality_prompt(dataset_url: str) -> str:
+    """
+        Build LLM prompt for analyzing dataset quality from URL.
+    """
+    return (
+        "You evaluate DATASET QUALITY based on the provided dataset URL.\n"
+        "Return ONE JSON object and nothing else (no prose/markdown/fences).\n"
+        "JSON schema (exactly this):\n"
+        "{\n"
+        '  "dataset_quality_score": <float 0..1>,\n'
+        '  "platform_reputation": <float 0..1>,\n'
+        '  "likely_documentation_quality": <float 0..1>,\n'
+        '  "likely_data_curation": <float 0..1>,\n'
+        '  "accessibility": <float 0..1>,\n'
+        '  "rationale": "<short sentence>"\n'
+        "}\n\n"
+        "How to compute dataset_quality_score (clamp to [0,1]):\n\n"
+        "1) Platform Reputation (0.3):\n"
+        "   - HuggingFace datasets: 0.25-0.3 (high curation standards)\n"
+        "   - Academic institutions (.edu domains): 0.2-0.25\n"
+        "   - Known research orgs (Google, Microsoft, etc.): 0.2-0.25\n"
+        "   - GitHub from reputable sources: 0.15-0.2\n"
+        "   - Other platforms: 0.0-0.15\n\n"
+        "2) Likely Documentation Quality (0.3):\n"
+        "   - HuggingFace (standardized cards): 0.25-0.3\n"
+        "   - Academic papers/repos: 0.2-0.25\n"
+        "   - Well-structured GitHub repos: 0.15-0.2\n"
+        "   - Basic repos: 0.05-0.15\n"
+        "   - Unknown/unclear: 0.0-0.05\n\n"
+        "3) Likely Data Curation (0.25):\n"
+        "   - Established benchmarks (GLUE, SQuAD, etc.): 0.2-0.25\n"
+        "   - Academic datasets: 0.15-0.2\n"
+        "   - Community datasets on HF: 0.1-0.15\n"
+        "   - Personal/unknown datasets: 0.0-0.1\n\n"
+        "4) Accessibility (0.15):\n"
+        "   - Free, public access: 0.15\n"
+        "   - Registration required: 0.1\n"
+        "   - Unclear access: 0.05\n"
+        "   - Likely restricted: 0.0\n\n"
+        "Final score = platform_reputation + documentation_quality + data_curation + accessibility\n"
+        "Be conservative. Only give high scores to clearly recognizable, high-quality datasets.\n\n"
+        "Recognize common dataset names and patterns:\n"
+        "- GLUE, SQuAD, ImageNet, COCO, LibriSpeech = high quality\n"
+        "- HuggingFace URLs with clear dataset names = good quality\n"
+        "- Academic paper datasets = moderate to good quality\n"
+        "- Personal GitHub repos = lower quality unless clearly well-maintained\n\n"
+        f"Dataset URL: {dataset_url}\n"
+    )    
 
 # Performance Claims metric calculation
 def fetch_model_card_content(model_id: str) -> str:
@@ -602,7 +686,7 @@ def get_model_weight_size(model_id: str) -> float:
             file_size = file_info.get('size', 0)
             file_type = file_info.get('type', '')
             
-            # Only process files (not directories), and only if they have a size
+            # Only process files and only if they have a size
             if file_type != 'file' or file_size == 0:
                 continue
                 
