@@ -1,7 +1,7 @@
 import sys, json
+from typing import Any, List
 from ece461.url_file_parser import parse_url_file
 from ece461.metricCalcs import metrics as met
-from typing import List
 
 def emit(obj):
     line = json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
@@ -9,11 +9,16 @@ def emit(obj):
     sys.stdout.flush()
 
 def get_model_name(model_obj):
-    # Use model_id if available, else model
     model_id = getattr(model_obj, "model_id", None) or getattr(model_obj, "model", "")
     if "/" in model_id:
         return model_id.split("/")[-1]
     return model_id
+
+def two_decimals(x: Any) -> Any:
+    if isinstance(x, float): return float(f"{x:.2f}")
+    if isinstance(x, dict):  return {k: two_decimals(v) for k, v in x.items()}
+    if isinstance(x, list):  return [two_decimals(v) for v in x]
+    return x
 
 def main():
     if len(sys.argv) != 2:
@@ -23,7 +28,6 @@ def main():
     models: List = parse_url_file(sys.argv[1])
     for m in models:
         results = met.run_metrics(m)
-        
         output = {
             "name": get_model_name(m),
             "category": "MODEL",
@@ -37,12 +41,12 @@ def main():
             "performance_claims_latency": int(results.get("performance", {}).get("latency_ms", 0) or 0),
             "license": results.get("license", {}).get("score", 0.0),
             "license_latency": int(results.get("license", {}).get("latency_ms", 0) or 0),
-            "size_score": results.get("size", {}).get("score", {
+            "size_score": results.get("size", {}).get("score") or {
                 "raspberry_pi": 0.0,
                 "jetson_nano": 0.0,
                 "desktop_pc": 0.0,
                 "aws_server": 0.0,
-            }),
+            },
             "size_score_latency": int(results.get("size", {}).get("latency_ms", 0) or 0),
             "dataset_and_code_score": results.get("dataset_and_code_quality", {}).get("score", 0.0),
             "dataset_and_code_score_latency": int(results.get("dataset_and_code_quality", {}).get("latency_ms", 0) or 0),
@@ -51,7 +55,7 @@ def main():
             "code_quality": results.get("code_quality", {}).get("score", 0.0),
             "code_quality_latency": int(results.get("code_quality", {}).get("latency_ms", 0) or 0),
         }
-        emit(output)
+        emit(two_decimals(output))
     return 0
 
 if __name__ == "__main__":
