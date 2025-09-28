@@ -1,5 +1,5 @@
 from typing import List
-import validators
+import validators, logging, os, sys
 
 class ModelLinks:
     def __init__(self, model: str, dataset: str | None = None, code: str | None = None) -> None:
@@ -7,18 +7,12 @@ class ModelLinks:
         self.dataset = dataset
         self.code = code
 
-def validate_url(url: str) -> bool:
-    """
-    Validates if the given string is a properly formatted URL.
-    
-    Args:
-        url (str): The URL string to validate.
-    """
-    return validators.url(url)
-
-# TODO: i am assuming the path exists here
 def parse_url_file(path: str) -> List[ModelLinks]:
     links = []
+
+    if not os.path.exists(path):
+        logging.exception("Error: URL file path doesn't exist")
+        sys.exit(1)
 
     with open(path, 'r') as file:
         lines = file.readlines()
@@ -26,11 +20,13 @@ def parse_url_file(path: str) -> List[ModelLinks]:
     for line in lines:
         sp = line.strip().split(",")
 
-        for _ in sp:
-            # TODO: check link validity
-            continue
+        for s in sp:
+            try:
+                validators.url(s)
+                links.append(ModelLinks(sp[2], sp[1] if sp[1] else None, sp[0] if sp[0] else None))
+            except Exception as e:
+                logging.exception("Error: " + str(e))
 
-        links.append(ModelLinks(sp[2], sp[1] if sp[1] else None, sp[0] if sp[0] else None))
 
     return links
 
