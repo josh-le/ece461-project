@@ -23,9 +23,9 @@ def calculate_net_score(metrics: dict) -> tuple[float, float]:
         'dataset_and_code_score': 0.15, 
         'bus_factor': 0.15,       
         'performance_claims': 0.10,   
-        'size_compatibility': 0.08,  
-        'code_quality': 0.04,       
-        'dataset_quality': 0.03       
+        'size_compatibility': 0.05,  
+        'code_quality': 0.05,       
+        'dataset_quality': 0.05       
     }
     
     # Calculate weighted sum
