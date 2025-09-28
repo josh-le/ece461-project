@@ -151,7 +151,7 @@ def calculate_ramp_up_metric(model: ModelLinks) -> tuple[float, float]:
     latency = (end_time - start_time) * 1000  # Convert to milliseconds
     logging.info("Ramp-up metric latency for model %s: %.2f ms", model.model_id, latency)
     
-    return (score, latency)
+    return (score, round(latency))
 
 def get_doc_score(model_card_text: str) -> float:
     """Calculates the documentation score based on the README content."""
@@ -202,7 +202,7 @@ def get_community_score(downloads: Optional[int]) -> float:
     """Calculates the community score based on downloads using a log scale."""
     if downloads is None or downloads == 0:
         return 0.0
-    return min(1.0, math.log10(downloads + 1) / 6)
+    return round(min(1.0, math.log10(downloads + 1) / 6), 2)
 
 @metric("bus-factor")
 def calculate_bus_factor(model: ModelLinks) -> tuple[float, float]:
@@ -237,7 +237,7 @@ def calculate_bus_factor(model: ModelLinks) -> tuple[float, float]:
     end_time = time.perf_counter()
     latency = (end_time - start_time) * 1000  # Convert to milliseconds
     logging.info("Ramp-up metric latency for model %s: %.2f ms", model.model_id, latency)
-    return (final_score, latency)
+    return (round(final_score, 2), round(latency))
 
 @metric("license")
 def calculate_license_metric(model: ModelLinks) -> tuple[float, float]:
@@ -276,7 +276,7 @@ def calculate_license_metric(model: ModelLinks) -> tuple[float, float]:
     latency = (end_time - start_time) * 1000  # Convert to milliseconds
     logging.info("License metric latency for model %s: %.2f ms", model.model_id, latency)
     
-    return (score, latency)
+    return (round(score, 2), round(latency))
 
 @metric("performance")
 def calculate_performance_metric(model: ModelLinks) -> tuple[float, float]:
@@ -315,7 +315,7 @@ def calculate_performance_metric(model: ModelLinks) -> tuple[float, float]:
     latency = (end_time - start_time) * 1000  # Convert to milliseconds
     logging.info("Performance metric latency for model %s: %.2f ms", model.model_id, latency)
 
-    return (score, latency)
+    return (round(score, 2), round(latency))
 
 @metric("size")
 def calculate_size_metric(model: ModelLinks) -> tuple[float, float]:
@@ -330,7 +330,7 @@ def calculate_size_metric(model: ModelLinks) -> tuple[float, float]:
         # End latency calculation
         end_time = time.perf_counter()
         latency = (end_time - start_time) * 1000  # Convert to milliseconds
-        return (score, latency)
+        return (score, round(latency))
     except Exception as e:
         raise ValueError(f"Failed to calculate size metric for {model.model_id}: {str(e)}")
 
@@ -357,7 +357,7 @@ def calculate_code_quality(model: ModelLinks) -> tuple[float, float]:
     # End latency calculation
     end_time = time.perf_counter()
     latency = (end_time - start_time) * 1000  # Convert to milliseconds
-    return (max(0.0, min(1.0, score10/10)), latency)
+    return (round(max(0.0, min(1.0, score10/10)), 2), round(latency))
 
 @metric("dataset_and_code_quality")
 def calculate_dataset_and_code_score(model: ModelLinks) -> tuple[float, float]:
@@ -390,7 +390,7 @@ def calculate_dataset_and_code_score(model: ModelLinks) -> tuple[float, float]:
     end_time = time.perf_counter()
     latency = round((end_time - start_time) * 1000)  # Convert to milliseconds
         
-    return score, latency
+    return round(score, 2), round(latency)
 
 @metric("dataset_quality")
 def calculate_dataset_quality(model: ModelLinks) -> tuple[float, float]:
@@ -425,7 +425,7 @@ def calculate_dataset_quality(model: ModelLinks) -> tuple[float, float]:
     end_time = time.perf_counter()
     latency = round((end_time - start_time) * 1000)
     
-    return score, latency
+    return round(score, 2), round(latency)
 
 ################################# Supporting Functions #################################
 # License metric calculation
@@ -710,7 +710,7 @@ def get_model_weight_size(model_id: str) -> float:
         
         total_size_mb = total_size_bytes / (1000 * 1000)
         
-        return total_size_mb
+        return round(total_size_mb, 2)
         
     except requests.RequestException as e:
         raise requests.RequestException(f"Failed to fetch model data from HF API: {str(e)}")

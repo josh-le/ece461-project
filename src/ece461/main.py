@@ -1,6 +1,6 @@
 import sys
 import logging
-import json
+import ndjson
 from ece461.logging_setup import setup as setup_logging
 from ece461.url_file_parser import parse_url_file, ModelLinks
 from ece461.metricCalcs import metrics as met
@@ -19,7 +19,26 @@ def main() -> int:
     for m in models:
         results = met.run_metrics(m)
         # Create dict of metric results to pass to net score
-        metrics_dict = {"NAME": m.model, "CATEGORY": "MODEL"}
+        metrics_dict = {"name": m.model_id, "category": "MODEL", 
+        "net_score": 0.0,
+        "net_score_latency": 0.0,
+        "ramp_up_time": 0.0,
+        "ramp_up_time_latency": 0.0,
+        "bus_factor": 0.0,
+        "bus_factor_latency": 0.0,
+        "performance_claims": 0.0,
+        "performance_claims_latency": 0.0,
+        "license": 0.0,
+        "license_latency": 0.0,
+        "size_scores": {},
+        "size_score_latency": 0.0,
+        "dataset_and_code_score": 0.0,
+        "dataset_and_code_score_latency": 0.0,
+        "dataset_quality": 0.0,
+        "dataset_quality_latency": 0.0,
+        "code_quality": 0.0,
+        "code_quality_latency": 0.0,
+        }
         for metric_name, metric_result in results.items():
             if metric_name == 'license':
                 metrics_dict['license'] = metric_result.get('score') or 0.0
@@ -47,12 +66,11 @@ def main() -> int:
                 metrics_dict['size_scores'] = metric_result.get('score') or {}
                 metrics_dict['size_scores_latency'] = metric_result.get('latency_ms') or 0.0
         net_score, latency = calculate_net_score(metrics_dict)
-        metrics_dict['net_score'] = net_score
+        metrics_dict['net_score'] = round(net_score, 2)
         metrics_dict['net_score_latency'] = latency
 
-        for obj in metrics_dict:
-            line = json.dumps(obj)
-            print(line)
+        writer = ndjson.writer(sys.stdout)
+        writer.writerow(metrics_dict)
 
     return 0
 
