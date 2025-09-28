@@ -13,6 +13,7 @@ def main() -> int:
     log.debug("Debug logging is enabled")
 
     models: List[ModelLinks] = parse_url_file(sys.argv[1])
+      
     for m in models:
         met.run_metrics(m)
 
