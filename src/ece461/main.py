@@ -10,7 +10,10 @@ def main() -> int:
     log = logging.getLogger("ece461.main")
     log.info("Logging is enabled")
     log.debug("Debug logging is enabled")
-    met.run_metrics("openai/whisper-tiny")
+
+    models = parse_url_file(sys.argv[1])
+    for m in models:
+        met.run_metrics(m)
 
     return 0
 
