@@ -360,6 +360,74 @@ def calculate_code_quality(model: ModelLinks) -> tuple[float, float]:
     print(max(0.0, min(1.0, score10/10)))
     return (max(0.0, min(1.0, score10/10)), latency)
 
+@metric("dataset_and_code_quality")
+def calculate_dataset_and_code_score(model: ModelLinks) -> tuple[float, float]:
+    """
+        Calculate the dataset and code quality score
+    """
+    start_time = time.perf_counter()
+    if model.dataset is None and model.code is None:
+        score = 0.0
+    else:
+        prompt = build_dataset_code_prompt(model.dataset, model.code)
+        try:
+            response = llm_api.query_llm(prompt)
+            logging.debug("Dataset and code LLM response: %s", response)
+            # Extract the score from the JSON response
+            m = re.search(r'"dataset_code_score"\s*:\s*([0-9]+(?:\.[0-9]+)?)', response)
+            if m:
+                extracted = float(m.group(1))
+                score = max(0.0, min(1.0, extracted))
+            else:
+                logging.error("Could not extract dataset_code_score from LLM response")
+                score = 0.0
+        except Exception as e:
+            logging.error("Error analyzing dataset and code: %s", e)
+            score = 0.0
+    
+    logging.info("Dataset and code metric score: %.3f", score)
+    
+    # End latency calculation
+    end_time = time.perf_counter()
+    latency = round((end_time - start_time) * 1000)  # Convert to milliseconds
+        
+    return score, latency
+
+@metric("dataset_quality")
+def calculate_dataset_quality(model: ModelLinks) -> tuple[float, float]:
+    """
+        Calculate dataset quality metric based on dataset URL.
+    """
+    start_time = time.perf_counter()
+    
+    if model.dataset is None or not model.dataset.strip():
+        score = 0.0
+        logging.info("No dataset URL provided, score = 0.0")
+    else:
+        try:
+            prompt = build_dataset_quality_prompt(model.dataset)
+            response = llm_api.query_llm(prompt)
+            logging.debug("Dataset quality LLM response: %s", response)
+            
+            # Extract the score from the JSON response
+            m = re.search(r'"dataset_quality_score"\s*:\s*([0-9]+(?:\.[0-9]+)?)', response)
+            if m:
+                extracted = float(m.group(1))
+                score = max(0.0, min(1.0, extracted))
+            else:
+                logging.error("Could not extract dataset_quality_score from LLM response")
+                score = 0.0
+        except Exception as e:
+            logging.error("Error analyzing dataset quality: %s", e)
+            score = 0.0
+    
+    logging.info("Dataset quality metric score: %.3f", score)
+    
+    end_time = time.perf_counter()
+    latency = round((end_time - start_time) * 1000)
+    
+    return score, latency
+
 ################################# Supporting Functions #################################
 # License metric calculation
 def build_license_prompt(model_card_excerpt: str) -> str:
@@ -396,6 +464,92 @@ def build_license_prompt(model_card_excerpt: str) -> str:
         "Do not invent licenses; be conservative.\n\n"
         "MODEL CARD:\n<<<\n" + model_card_excerpt + "\n>>>\n"
     )
+
+# Dataset and Code metric calculation
+def build_dataset_code_prompt(dataset_url: str, code_url: str) -> str:
+    """
+    Build LLM prompt for analyzing dataset and code availability and quality from URLs.
+    """
+    return (
+        "You evaluate a model's DATASET AND CODE AVAILABILITY based on the provided URLs.\n"
+        "Return ONE JSON object and nothing else (no prose/markdown/fences).\n"
+        "JSON schema (exactly this):\n"
+        "{\n"
+        '  "dataset_code_score": <float 0..1>,\n'
+        '  "has_dataset": true|false,\n'
+        '  "has_code": true|false,\n'
+        '  "dataset_quality": <float 0..1>,\n'
+        '  "code_quality": <float 0..1>,\n'
+        '  "rationale": "<short sentence>"\n'
+        "}\n\n"
+        "How to compute dataset_code_score (clamp to [0,1]):\n"
+        "1) Dataset Availability (0.25): Does the model have a dataset URL provided?\n"
+        "   - 0.25 if valid dataset URL present, 0.0 if None or invalid\n"
+        "2) Code Availability (0.25): Does the model have a code URL provided?\n"
+        "   - 0.25 if valid code URL present, 0.0 if None or invalid\n"
+        "3) Dataset Quality (0.25): Based on URL, assess likely quality:\n"
+        "   - HuggingFace datasets: 0.2-0.25 (well-structured platform)\n"
+        "   - GitHub with clear dataset structure: 0.15-0.2\n"
+        "   - Other platforms: 0.1-0.15\n"
+        "4) Code Quality (0.25): Based on URL, assess likely quality:\n"
+        "   - GitHub repos from known orgs (google, microsoft, etc.): 0.2-0.25\n"
+        "   - HuggingFace model repos: 0.15-0.2\n"
+        "   - Other GitHub repos: 0.1-0.15\n\n"
+        "Final score = dataset_availability + code_availability + dataset_quality + code_quality\n"
+        "Be conservative. Only give full points for clearly recognizable, high-quality platforms.\n\n"
+        "Dataset URL Provided:\n" + (dataset_url if dataset_url else "None") + "\n"
+        "Code URL Provided:\n" + (code_url if code_url else "None") + "\n"
+    )
+
+# Dataset quality metric calculation
+def build_dataset_quality_prompt(dataset_url: str) -> str:
+    """
+        Build LLM prompt for analyzing dataset quality from URL.
+    """
+    return (
+        "You evaluate DATASET QUALITY based on the provided dataset URL.\n"
+        "Return ONE JSON object and nothing else (no prose/markdown/fences).\n"
+        "JSON schema (exactly this):\n"
+        "{\n"
+        '  "dataset_quality_score": <float 0..1>,\n'
+        '  "platform_reputation": <float 0..1>,\n'
+        '  "likely_documentation_quality": <float 0..1>,\n'
+        '  "likely_data_curation": <float 0..1>,\n'
+        '  "accessibility": <float 0..1>,\n'
+        '  "rationale": "<short sentence>"\n'
+        "}\n\n"
+        "How to compute dataset_quality_score (clamp to [0,1]):\n\n"
+        "1) Platform Reputation (0.3):\n"
+        "   - HuggingFace datasets: 0.25-0.3 (high curation standards)\n"
+        "   - Academic institutions (.edu domains): 0.2-0.25\n"
+        "   - Known research orgs (Google, Microsoft, etc.): 0.2-0.25\n"
+        "   - GitHub from reputable sources: 0.15-0.2\n"
+        "   - Other platforms: 0.0-0.15\n\n"
+        "2) Likely Documentation Quality (0.3):\n"
+        "   - HuggingFace (standardized cards): 0.25-0.3\n"
+        "   - Academic papers/repos: 0.2-0.25\n"
+        "   - Well-structured GitHub repos: 0.15-0.2\n"
+        "   - Basic repos: 0.05-0.15\n"
+        "   - Unknown/unclear: 0.0-0.05\n\n"
+        "3) Likely Data Curation (0.25):\n"
+        "   - Established benchmarks (GLUE, SQuAD, etc.): 0.2-0.25\n"
+        "   - Academic datasets: 0.15-0.2\n"
+        "   - Community datasets on HF: 0.1-0.15\n"
+        "   - Personal/unknown datasets: 0.0-0.1\n\n"
+        "4) Accessibility (0.15):\n"
+        "   - Free, public access: 0.15\n"
+        "   - Registration required: 0.1\n"
+        "   - Unclear access: 0.05\n"
+        "   - Likely restricted: 0.0\n\n"
+        "Final score = platform_reputation + documentation_quality + data_curation + accessibility\n"
+        "Be conservative. Only give high scores to clearly recognizable, high-quality datasets.\n\n"
+        "Recognize common dataset names and patterns:\n"
+        "- GLUE, SQuAD, ImageNet, COCO, LibriSpeech = high quality\n"
+        "- HuggingFace URLs with clear dataset names = good quality\n"
+        "- Academic paper datasets = moderate to good quality\n"
+        "- Personal GitHub repos = lower quality unless clearly well-maintained\n\n"
+        f"Dataset URL: {dataset_url}\n"
+    )    
 
 # Performance Claims metric calculation
 def fetch_model_card_content(model_id: str) -> str:
@@ -541,7 +695,7 @@ def get_model_weight_size(model_id: str) -> float:
             file_size = file_info.get('size', 0)
             file_type = file_info.get('type', '')
             
-            # Only process files (not directories), and only if they have a size
+            # Only process files and only if they have a size
             if file_type != 'file' or file_size == 0:
                 continue
                 
