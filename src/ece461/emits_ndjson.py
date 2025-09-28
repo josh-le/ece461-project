@@ -52,7 +52,7 @@ def parse_line_to_links(line: str) -> ModelLinks:
             mid = f"{owner}/{name}".strip("/")
         except ValueError:
             mid = model_url
-    return ModelLinks(model=mid, dataset=dataset_url, code=code_url)
+    return ModelLinks(model=mid, dataset=dataset_url, code=code_url, model_id=mid)
 
 # Runs all metrics, builds metrics_dict, calculates net score, and emits NDJSON
 def evaluate_model(line: str) -> Dict[str, Any]:
@@ -60,42 +60,76 @@ def evaluate_model(line: str) -> Dict[str, Any]:
     name = model_name(links.model)
 
     results = run_metrics(links)
-    metrics_dict = {
-        "name": name,
-        "category": "MODEL"
+
+    # Extract scores and latencies, defaulting to 0 or {} if missing
+    license_score = results.get('license', {}).get('score', 0.0) or 0.0
+    license_latency = int(results.get('license', {}).get('latency_ms', 0) or 0)
+
+    ramp_up_score = results.get('ramp_up', {}).get('score', 0.0) or 0.0
+    ramp_up_latency = int(results.get('ramp_up', {}).get('latency_ms', 0) or 0)
+
+    bus_factor_score = results.get('bus-factor', {}).get('score', 0.0) or 0.0
+    bus_factor_latency = int(results.get('bus-factor', {}).get('latency_ms', 0) or 0)
+
+    performance_score = results.get('performance', {}).get('score', 0.0) or 0.0
+    performance_latency = int(results.get('performance', {}).get('latency_ms', 0) or 0)
+
+    size_score_dict = results.get('size', {}).get('score', {}) or {}
+    size_latency = int(results.get('size', {}).get('latency_ms', 0) or 0)
+    # Ensure all four hardware keys are present
+    size_score = {
+        "raspberry_pi": float(size_score_dict.get("raspberry_pi", 0.0)),
+        "jetson_nano": float(size_score_dict.get("jetson_nano", 0.0)),
+        "desktop_pc": float(size_score_dict.get("desktop_pc", 0.0)),
+        "aws_server": float(size_score_dict.get("aws_server", 0.0)),
     }
 
-    for metric_name, metric_result in results.items():
-        if metric_name == 'license':
-            metrics_dict['license'] = metric_result.get('score') or 0.0
-            metrics_dict['license_latency'] = metric_result.get('latency_ms') or 0.0
-        elif metric_name == 'ramp_up':
-            metrics_dict['ramp_up_time'] = metric_result.get('score') or 0.0
-            metrics_dict['ramp_up_time_latency'] = metric_result.get('latency_ms') or 0.0
-        elif metric_name == 'dataset_and_code_quality':
-            metrics_dict['dataset_and_code_score'] = metric_result.get('score') or 0.0
-            metrics_dict['dataset_and_code_score_latency'] = metric_result.get('latency_ms') or 0.0
-        elif metric_name == 'bus-factor':
-            metrics_dict['bus_factor'] = metric_result.get('score') or 0.0
-            metrics_dict['bus_factor_latency'] = metric_result.get('latency_ms') or 0.0
-        elif metric_name == 'performance':
-            metrics_dict['performance_claims'] = metric_result.get('score') or 0.0
-            metrics_dict['performance_claims_latency'] = metric_result.get('latency_ms') or 0.0
-        elif metric_name == 'code_quality':
-            metrics_dict['code_quality'] = metric_result.get('score') or 0.0
-            metrics_dict['code_quality_latency'] = metric_result.get('latency_ms') or 0.0
-        elif metric_name == 'dataset_quality':
-            metrics_dict['dataset_quality'] = metric_result.get('score') or 0.0
-            metrics_dict['dataset_quality_latency'] = metric_result.get('latency_ms') or 0.0
-        elif metric_name == 'size':
-            metrics_dict['size_score'] = metric_result.get('score') or {}
-            metrics_dict['size_score_latency'] = metric_result.get('latency_ms') or 0.0
+    dataset_and_code_score = results.get('dataset_and_code_quality', {}).get('score', 0.0) or 0.0
+    dataset_and_code_latency = int(results.get('dataset_and_code_quality', {}).get('latency_ms', 0) or 0)
 
+    dataset_quality_score = results.get('dataset_quality', {}).get('score', 0.0) or 0.0
+    dataset_quality_latency = int(results.get('dataset_quality', {}).get('latency_ms', 0) or 0)
+
+    code_quality_score = results.get('code_quality', {}).get('score', 0.0) or 0.0
+    code_quality_latency = int(results.get('code_quality', {}).get('latency_ms', 0) or 0)
+
+    # Build metrics_dict for net score calculation
+    metrics_dict = {
+        'license': license_score,
+        'ramp_up_time': ramp_up_score,
+        'dataset_and_code_score': dataset_and_code_score,
+        'bus_factor': bus_factor_score,
+        'performance_claims': performance_score,
+        'size_scores': size_score,
+        'code_quality': code_quality_score,
+        'dataset_quality': dataset_quality_score
+    }
     net_score, net_score_latency = calculate_net_score(metrics_dict)
-    metrics_dict['net_score'] = net_score
-    metrics_dict['net_score_latency'] = net_score_latency
 
-    return metrics_dict
+    # Output in exact sample-output order
+    output = {
+        "name": name,
+        "category": "MODEL",
+        "net_score": float(net_score),
+        "net_score_latency": int(net_score_latency),
+        "ramp_up_time": ramp_up_score,
+        "ramp_up_time_latency": ramp_up_latency,
+        "bus_factor": bus_factor_score,
+        "bus_factor_latency": bus_factor_latency,
+        "performance_claims": performance_score,
+        "performance_claims_latency": performance_latency,
+        "license": license_score,
+        "license_latency": license_latency,
+        "size_score": size_score,
+        "size_score_latency": size_latency,
+        "dataset_and_code_score": dataset_and_code_score,
+        "dataset_and_code_score_latency": dataset_and_code_latency,
+        "dataset_quality": dataset_quality_score,
+        "dataset_quality_latency": dataset_quality_latency,
+        "code_quality": code_quality_score,
+        "code_quality_latency": code_quality_latency,
+    }
+    return output
 
 def main() -> int:
     if len(sys.argv) != 2:
