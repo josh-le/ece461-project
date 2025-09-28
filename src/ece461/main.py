@@ -22,27 +22,33 @@ def main() -> int:
         for metric_name, metric_result in results.items():
             if metric_name == 'license':
                 metrics_dict['license'] = metric_result.get('score') or 0.0
+                metrics_dict['license_latency'] = metric_result.get('latency_ms') or 0.0
             elif metric_name == 'ramp_up':
                 metrics_dict['ramp_up_time'] = metric_result.get('score') or 0.0
+                metrics_dict['ramp_up_latency'] = metric_result.get('latency_ms') or 0.0
             elif metric_name == 'dataset_and_code_quality':
                 metrics_dict['dataset_and_code_score'] = metric_result.get('score') or 0.0
+                metrics_dict['dataset_and_code_latency'] = metric_result.get('latency_ms') or 0.0
             elif metric_name == 'bus-factor':
                 metrics_dict['bus_factor'] = metric_result.get('score') or 0.0
+                metrics_dict['bus_factor_latency'] = metric_result.get('latency_ms') or 0.0
             elif metric_name == 'performance':
                 metrics_dict['performance_claims'] = metric_result.get('score') or 0.0
+                metrics_dict['performance_claims_latency'] = metric_result.get('latency_ms') or 0.0
             elif metric_name == 'code_quality':
                 metrics_dict['code_quality'] = metric_result.get('score') or 0.0
+                metrics_dict['code_quality_latency'] = metric_result.get('latency_ms') or 0.0
             elif metric_name == 'dataset_quality':
                 metrics_dict['dataset_quality'] = metric_result.get('score') or 0.0
+                metrics_dict['dataset_quality_latency'] = metric_result.get('latency_ms') or 0.0
             elif metric_name == 'size':
                 # Size returns a dict of hardware compatibility scores
                 metrics_dict['size_scores'] = metric_result.get('score') or {}
-
+                metrics_dict['size_scores_latency'] = metric_result.get('latency_ms') or 0.0
         net_score, latency = calculate_net_score(metrics_dict)
         metrics_dict['net_score'] = net_score
         metrics_dict['net_score_latency'] = latency
-        print("\nMetrics dict:\n")
-        print(metrics_dict)
+
     return 0
 
 if __name__ == "__main__":
