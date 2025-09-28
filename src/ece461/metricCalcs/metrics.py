@@ -109,7 +109,6 @@ def run_metrics(
             out[result[fut]] = fut.result()
 
     logging.info("Completed running metrics")
-    print("\n\nho\n\n")
     print(out)
     
     return out
@@ -206,12 +205,13 @@ def get_community_score(downloads: Optional[int]) -> float:
     return min(1.0, math.log10(downloads + 1) / 6)
 
 @metric("bus-factor")
-def calculate_bus_factor(model: ModelLinks) -> float:
+def calculate_bus_factor(model: ModelLinks) -> tuple[float, float]:
     """
     Calculates the Model Resilience Score for a given Hugging Face model repository.
     """
     info: ModelInfo = model_info(model.model_id, files_metadata=True)
     
+    start_time = time.perf_counter()
     readme_content: str = info.cardData.get('text', '') if info.cardData else ''
     author: str = info.author
     filenames: List[str] = [f.rfilename for f in info.siblings]
@@ -234,7 +234,10 @@ def calculate_bus_factor(model: ModelLinks) -> float:
                           weights['repro'] * s_repro +
                           weights['community'] * s_community)
                    
-    return final_score
+    end_time = time.perf_counter()
+    latency = (end_time - start_time) * 1000  # Convert to milliseconds
+    logging.info("Ramp-up metric latency for model %s: %.2f ms", model.model_id, latency)
+    return (final_score, latency)
 
 @metric("license")
 def calculate_license_metric(model: ModelLinks) -> tuple[float, float]:
