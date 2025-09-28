@@ -5,6 +5,7 @@ from huggingface_hub.errors import EntryNotFoundError, RepositoryNotFoundError, 
 from huggingface_hub.hf_api import ModelInfo
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, Iterable, Optional, Tuple, Union, TypedDict, List
+from ece461.url_file_parser import ModelLinks 
 
 # ---- Metric calculation result data type ----
 class MetricValue(TypedDict, total=False):
@@ -63,7 +64,7 @@ def normalize(ret: ReturnType) -> MetricValue:
 
 # ---- Parallel runner: returns dict[name] -> MetricValue ----
 def run_metrics(
-    model_id: str,
+    model: ModelLinks,
     include: Optional[Iterable[str]] = None,
     exclude: Optional[Iterable[str]] = None,
 ) -> Dict[str, MetricValue]:
@@ -93,7 +94,7 @@ def run_metrics(
     def call(fn: Callable[..., ReturnType]) -> MetricValue:
         try:
             # Try calling with model_id first
-            ret = fn(model_id=model_id)  # type: ignore[arg-type]
+            ret = fn(model=model)  # type: ignore[arg-type]
             return normalize(ret)
         except Exception as e:
             logging.exception("Metric crashed")
@@ -114,7 +115,7 @@ def run_metrics(
 
 # ---- Metric implementations ----
 @metric("ramp_up")
-def calculate_ramp_up_metric(model_id: str) -> tuple[float, float]:
+def calculate_ramp_up_metric(model: ModelLinks) -> tuple[float, float]:
     """
         Calculate ramp-up time metric.
     """
@@ -122,9 +123,9 @@ def calculate_ramp_up_metric(model_id: str) -> tuple[float, float]:
     start_time = time.perf_counter()
 
     # Initiate Ramp-up metric calculation
-    readme_data = fetch_readme_content(model_id)
+    readme_data = fetch_readme_content(model.model_id)
     if readme_data == "":
-        logging.info("No README content found for model %s", model_id)
+        logging.info("No README content found for model %s", model.model_id)
         score = 0.0
     else:
         prompt = build_ramp_up_prompt(readme_data)
@@ -142,13 +143,13 @@ def calculate_ramp_up_metric(model_id: str) -> tuple[float, float]:
                 score = extracted
         except:
             score = 0.0
-            logging.error("Unexpected LLM response format for model %s: %s", model_id, response)
+            logging.error("Unexpected LLM response format for model %s: %s", model.model_id, response)
     
     logging.info("Ramp-up metric LLM score for model %f", score)
     # End latency calculation
     end_time = time.perf_counter()
     latency = (end_time - start_time) * 1000  # Convert to milliseconds
-    logging.info("Ramp-up metric latency for model %s: %.2f ms", model_id, latency)
+    logging.info("Ramp-up metric latency for model %s: %.2f ms", model.model_id, latency)
     
     return (score, latency)
 
@@ -204,12 +205,13 @@ def get_community_score(downloads: Optional[int]) -> float:
     return min(1.0, math.log10(downloads + 1) / 6)
 
 @metric("bus-factor")
-def calculate_bus_factor(repo_id: str) -> float:
+def calculate_bus_factor(model: ModelLinks) -> tuple[float, float]:
     """
     Calculates the Model Resilience Score for a given Hugging Face model repository.
     """
-    info: ModelInfo = model_info(repo_id, files_metadata=True)
+    info: ModelInfo = model_info(model.model_id, files_metadata=True)
     
+    start_time = time.perf_counter()
     readme_content: str = info.cardData.get('text', '') if info.cardData else ''
     author: str = info.author
     filenames: List[str] = [f.rfilename for f in info.siblings]
@@ -232,10 +234,13 @@ def calculate_bus_factor(repo_id: str) -> float:
                           weights['repro'] * s_repro +
                           weights['community'] * s_community)
                    
-    return final_score
+    end_time = time.perf_counter()
+    latency = (end_time - start_time) * 1000  # Convert to milliseconds
+    logging.info("Ramp-up metric latency for model %s: %.2f ms", model.model_id, latency)
+    return (final_score, latency)
 
 @metric("license")
-def calculate_license_metric(model_id: str) -> tuple[float, float]:
+def calculate_license_metric(model: ModelLinks) -> tuple[float, float]:
     """
         Calculate license compatibility score.
     """
@@ -243,9 +248,9 @@ def calculate_license_metric(model_id: str) -> tuple[float, float]:
     start_time = time.perf_counter()
 
     # Initiate license metric calculation
-    model_card_data = fetch_model_card_content(model_id)
+    model_card_data = fetch_model_card_content(model.model_id)
     if model_card_data == "":
-        logging.info("No model card content found for model %s", model_id)
+        logging.info("No model card content found for model %s", model.model_id)
         score = 0.0
     else:
         prompt = build_license_prompt(model_card_data)
@@ -263,18 +268,18 @@ def calculate_license_metric(model_id: str) -> tuple[float, float]:
                 score = extracted
         except:
             score = 0.0
-            logging.error("Unexpected LLM response format for model %s: %s", model_id, response)
+            logging.error("Unexpected LLM response format for model %s: %s", model.model_id, response)
     
     logging.info("License metric LLM score for model %f", score)
     # End latency calculation
     end_time = time.perf_counter()
     latency = (end_time - start_time) * 1000  # Convert to milliseconds
-    logging.info("License metric latency for model %s: %.2f ms", model_id, latency)
+    logging.info("License metric latency for model %s: %.2f ms", model.model_id, latency)
     
     return (score, latency)
 
 @metric("performance")
-def calculate_performance_metric(model_id: str) -> tuple[float, float]:
+def calculate_performance_metric(model: ModelLinks) -> tuple[float, float]:
     """
         Calculate performance benchmark score.
     """
@@ -282,9 +287,9 @@ def calculate_performance_metric(model_id: str) -> tuple[float, float]:
     start_time = time.perf_counter()
 
     # Initiate performance metric calculation
-    model_card_data = fetch_model_card_content(model_id)
+    model_card_data = fetch_model_card_content(model.model_id)
     if model_card_data == "":
-        logging.info("No model card content found for model %s", model_id)
+        logging.info("No model card content found for model %s", model.model_id)
         score = 0.0
     else:
         prompt = build_performance_prompt(model_card_data)
@@ -302,42 +307,48 @@ def calculate_performance_metric(model_id: str) -> tuple[float, float]:
                 score = extracted
         except:
             score = 0.0
-            logging.error("Unexpected LLM response format for model %s: %s", model_id, response)
+            logging.error("Unexpected LLM response format for model %s: %s", model.model_id, response)
     
     logging.info("Performance metric LLM score for model %f", score)
     # End latency calculation
     end_time = time.perf_counter()
     latency = (end_time - start_time) * 1000  # Convert to milliseconds
-    logging.info("Performance metric latency for model %s: %.2f ms", model_id, latency)
+    logging.info("Performance metric latency for model %s: %.2f ms", model.model_id, latency)
 
     return (score, latency)
 
 @metric("size")
-def calculate_size_metric(model_id: str) -> tuple[float, float]:
+def calculate_size_metric(model: ModelLinks) -> tuple[float, float]:
     """
         Calculate size compatibility scores for different hardware types.
     """
     # Start latency calculation
     start_time = time.perf_counter()
     try:
-        total_size_mb = get_model_weight_size(model_id)
+        total_size_mb = get_model_weight_size(model.model_id)
         score = calculate_hardware_compatibility_scores(total_size_mb)
         # End latency calculation
         end_time = time.perf_counter()
         latency = (end_time - start_time) * 1000  # Convert to milliseconds
         return (score, latency)
     except Exception as e:
-        raise ValueError(f"Failed to calculate size metric for {model_id}: {str(e)}")
+        raise ValueError(f"Failed to calculate size metric for {model.model_id}: {str(e)}")
 
 @metric("code_quality")
-def calculate_code_quality(path: str) -> tuple[float, float]:
+def calculate_code_quality(model: ModelLinks) -> tuple[float, float]:
     """
         Run pylint on Python files in 'path' and return normalized score.
     """
     # Start latency calculation
     start_time = time.perf_counter()
+
+    if not model.code:
+        end_time = time.perf_counter()
+        latency = (end_time - start_time) * 1000
+        return (0.0, latency)
+
     proc = subprocess.run(
-        [sys.executable, "-m", "pylint", "--exit-zero", "--score=y", path],
+        [sys.executable, "-m", "pylint", "--exit-zero", "--score=y", model.code],
         capture_output=True, text=True
     )
     m = re.search(r"rated at\s+([0-9.]+)/10", proc.stdout)
