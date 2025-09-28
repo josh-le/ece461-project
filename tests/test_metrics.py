@@ -2,6 +2,7 @@ from typing import Any, Callable, ContextManager, Dict
 from pathlib import Path
 import types
 import pytest
+from ece461.url_file_parser import ModelLinks
 
 from ece461.metricCalcs import metrics as met
 from huggingface_hub.errors import (
@@ -247,3 +248,75 @@ def test_calculate_license_metric_bad_llm(monkeypatch: pytest.MonkeyPatch) -> No
     model = types.SimpleNamespace(model_id="x/y", code=None)
     score, _ = met.calculate_license_metric(model)
     assert score == 0.0
+
+def test_dataset_and_code_score_with_both_urls():
+    """Test the dataset_and_code_quality metric with both URLs"""
+    dataset_url = "https://huggingface.co/datasets/bookcorpus"
+    code_url = "https://github.com/google-research/bert"
+   
+    model = ModelLinks("hi", dataset_url, code_url, "google-research/bert")
+    score, latency_ms = met.calculate_dataset_and_code_score(model)
+   
+    # Basic validation
+    assert 0.0 <= score <= 1.0, f"Score {score} should be between 0 and 1"
+    assert latency_ms >= 0.0, f"Latency {latency_ms} should be non-negative"
+    assert isinstance(score, float), "Score should be a float"
+    assert isinstance(latency_ms, (int, float)), "Latency should be numeric"
+
+
+def test_dataset_and_code_score_with_no_urls():
+    """Test the dataset_and_code_quality metric with no URLs"""
+    model = ModelLinks("hi", None, None, "google-research/bert")
+    score, latency_ms = met.calculate_dataset_and_code_score(model)
+   
+    assert score == 0.0, "Score should be 0.0 when no URLs provided"
+    assert latency_ms >= 0.0, f"Latency {latency_ms} should be non-negative"
+
+
+def test_dataset_and_code_score_partial_urls():
+    """Test with only one URL provided"""
+    # Only dataset URL
+    model = ModelLinks("hi", "https://huggingface.co/datasets/squad", None, "google-research/bert")
+    score1, _ = met.calculate_dataset_and_code_score(model)
+    assert 0.0 <= score1 <= 1.0, "Should get partial score with only dataset"
+   
+    # Only code URL  
+    model = ModelLinks("hi", None, "https://github.com/google-research/bert", "google-research/bert")
+    score2, _ = met.calculate_dataset_and_code_score(model)
+    assert 0.0 <= score2 <= 1.0, "Should get partial score with only code"
+
+
+def test_dataset_quality_with_url():
+    """Test the dataset_quality metric with a HuggingFace dataset"""
+    model = ModelLinks("hi", "https://huggingface.co/datasets/squad", None, "google-research/bert")
+    score, latency_ms = met.calculate_dataset_quality(model)
+   
+    # Basic validation
+    assert 0.0 <= score <= 1.0, f"Score {score} should be between 0 and 1"
+    assert latency_ms >= 0.0, f"Latency {latency_ms} should be non-negative"
+    assert isinstance(score, float), "Score should be a float"
+    assert isinstance(latency_ms, (int, float)), "Latency should be numeric"
+
+
+def test_dataset_quality_with_no_url():
+    """Test the dataset_quality metric with no URL"""
+    model = ModelLinks("hi", None, None, "google-research/bert")
+    score, latency_ms = met.calculate_dataset_quality(model)
+   
+    assert score == 0.0, "Score should be 0.0 when no URL provided"
+    assert latency_ms >= 0.0, f"Latency {latency_ms} should be non-negative"
+
+
+def test_dataset_quality_different_platforms():
+    """Test dataset quality with different platform URLs"""
+    # HuggingFace dataset
+    model = ModelLinks("hi", "https://huggingface.co/datasets/glue", None, "google-research/bert")
+    hf_score, _ = met.calculate_dataset_quality(model)
+   
+    # GitHub dataset  
+    model = ModelLinks("hi", "https://github.com/google-research/text-to-text-transfer-transformer", None, "google-research/bert")
+    gh_score, _ = met.calculate_dataset_quality(model)
+   
+    # Both should be valid scores
+    assert 0.0 <= hf_score <= 1.0
+    assert 0.0 <= gh_score <= 1.0
