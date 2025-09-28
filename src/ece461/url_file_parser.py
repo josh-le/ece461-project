@@ -19,16 +19,23 @@ def parse_url_file(path: str) -> List[ModelLinks]:
         lines: List[str] = file.readlines()
 
     for line in lines:
-        sp: List[str] = line.strip().split(",")
+        code, dataset, model = line.strip().split(",")
 
-        for s in sp:
-            try:
-                validators.url(s)
-                model_id: str = sp[2].split(".co/")[1].split("/")[0]
-            except Exception as e:
-                logging.exception("Error: " + str(e))
+        if not model:
+            logging.exception("Error: model link not found")
+            sys.exit(1)
+        else:
+            validators.url(model)
 
-        links.append(ModelLinks(sp[2], sp[1] if sp[1] else None, sp[0] if sp[0] else None, model_id))
+        if code:
+            validators.url(code)
+
+        if dataset:
+            validators.url(dataset)
+
+        spl: List[str] = model.split(".co/")[1].split("/")
+        model_id: str = spl[0] + "/" + spl[1]
+        links.append(ModelLinks(model, dataset if dataset else None, code if code else None, model_id))
 
     return links
 
