@@ -1,6 +1,6 @@
 import sys
 import logging
-import ndjson
+import json
 from ece461.logging_setup import setup as setup_logging
 from ece461.url_file_parser import parse_url_file, ModelLinks
 from ece461.metricCalcs import metrics as met
@@ -69,8 +69,7 @@ def main() -> int:
         metrics_dict['net_score'] = round(net_score, 2)
         metrics_dict['net_score_latency'] = latency
 
-        writer = ndjson.writer(sys.stdout)
-        writer.writerow(metrics_dict)
+        print(json.dumps(metrics_dict, separators=(',', ':')))
 
     return 0
 

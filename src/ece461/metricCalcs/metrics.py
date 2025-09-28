@@ -108,9 +108,7 @@ def run_metrics(
         for fut in as_completed(result):
             out[result[fut]] = fut.result()
 
-    logging.info("Completed running metrics")
-    print(out)
-    
+    logging.info("Completed running metrics")    
     return out
 
 # ---- Metric implementations ----
