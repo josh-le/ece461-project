@@ -63,7 +63,14 @@ def main() -> int:
                 metrics_dict['dataset_quality_latency'] = metric_result.get('latency_ms') or 0.0
             elif metric_name == 'size':
                 # Size returns a dict of hardware compatibility scores
-                metrics_dict['size_scores'] = metric_result.get('score') or {}
+                size_data = metric_result.get('score') or {}
+
+                metrics_dict['size_scores'] = {
+                    "raspberry_pi": float(size_data.get("raspberry_pi", 0.0)),
+                    "jetson_nano": float(size_data.get("jetson_nano", 0.0)), 
+                    "desktop_pc": float(size_data.get("desktop_pc", 0.0)),
+                    "aws_server": float(size_data.get("aws_server", 0.0))
+                }
                 metrics_dict['size_score_latency'] = metric_result.get('latency_ms') or 0.0
         net_score, latency = calculate_net_score(metrics_dict)
         metrics_dict['net_score'] = round(net_score, 2)
