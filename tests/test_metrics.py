@@ -8,10 +8,10 @@ from huggingface_hub.errors import (
     EntryNotFoundError,
     RepositoryNotFoundError,
     HfHubHTTPError,
+
 )
 
 # ----------------- Helpers to safely patch & restore the registry -----------------
-
 def swap_registry(temp: dict[str, Callable[..., Any]]) -> ContextManager[None]:
     """Context manager to temporarily replace REGISTRY."""
     class _Ctx:
@@ -21,7 +21,6 @@ def swap_registry(temp: dict[str, Callable[..., Any]]) -> ContextManager[None]:
             _Ctx._orig = dict(met.REGISTRY)
             met.REGISTRY.clear()
             met.REGISTRY.update(temp)
-
         def __exit__(self, *exc: Any) -> None:
             met.REGISTRY.clear()
             met.REGISTRY.update(_Ctx._orig)
@@ -81,10 +80,12 @@ def test_fetch_readme_content_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     assert met.fetch_readme_content("x/y") == ""
 
 def test_fetch_model_card_content_success(monkeypatch: pytest.MonkeyPatch) -> None:
+
     class MC:
         def __init__(self) -> None: self.content = "card text"
     monkeypatch.setattr(met, "ModelCard", types.SimpleNamespace(load=lambda *_a, **_k: MC()))
     assert met.fetch_model_card_content("x/y") == "card text"
+
 
 def test_fetch_model_card_content_repo_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
     def _load(*_a: Any, **_k: Any) -> Any:
@@ -98,7 +99,6 @@ def test_prompt_builders() -> None:
     assert len(met.build_license_prompt("x")) > 10
 
 # ----------------------------- Ramp-up / Performance ------------------------------
-
 def test_ramp_up_ok(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(met, "fetch_readme_content", lambda _m: "README")
     monkeypatch.setattr(met.llm_api, "query_llm", lambda _p: '{"ramp_up_score":0.7}')
@@ -158,6 +158,7 @@ def test_get_model_weight_size_ok(monkeypatch: pytest.MonkeyPatch) -> None:
     total_mb = met.get_model_weight_size("x/y")
     assert 0.99 < total_mb < 1.01
 
+
 def test_get_model_weight_size_bad_shapes(monkeypatch: pytest.MonkeyPatch) -> None:
     class R1:
         status_code = 200
@@ -204,6 +205,7 @@ def test_hardware_thresholds() -> None:
 
 # -------------------------------- Code quality -----------------------------------
 
+
 def test_calculate_code_quality_hit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     class P:
         def __init__(self) -> None:
@@ -223,6 +225,7 @@ def test_calculate_code_quality_miss(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     assert score == 0.0
 
 # -------------------------------- License metric ---------------------------------
+
 
 def test_calculate_license_metric_ok(monkeypatch: pytest.MonkeyPatch) -> None:
     class MC:
