@@ -16,8 +16,7 @@ elif [[ "$cmd" == "install" ]]; then
 
 elif [[ "$cmd" == "test" ]]; then
   cd "$ROOT"
-  python3 -m pytest -q --disable-warnings \
-    --cov=ece461 --cov-report=term
+  python3 "$ROOT/src/ece461/test_summary.py"
 
   # TODO: Format stdout output as required by autograder
 
