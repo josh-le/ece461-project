@@ -357,7 +357,6 @@ def calculate_code_quality(model: ModelLinks) -> tuple[float, float]:
     # End latency calculation
     end_time = time.perf_counter()
     latency = (end_time - start_time) * 1000  # Convert to milliseconds
-    print(max(0.0, min(1.0, score10/10)))
     return (max(0.0, min(1.0, score10/10)), latency)
 
 @metric("dataset_and_code_quality")

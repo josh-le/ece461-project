@@ -3,6 +3,7 @@ from pathlib import Path
 import types, pytest
 
 from ece461.metricCalcs import metrics as met
+from ece461.url_file_parser import ModelLinks
 from huggingface_hub.errors import (
     EntryNotFoundError, RepositoryNotFoundError, HfHubHTTPError
 )
@@ -217,3 +218,12 @@ def test_calculate_license_metric_bad_llm(monkeypatch) -> None:
     monkeypatch.setattr(met.llm_api, "query_llm", lambda _p: "nonsense")
     score, _ = met.calculate_license_metric("x/y")
     assert score == 0.0
+
+# -------------------------------- Bus factor metric ---------------------------------
+def test_bus_factor_manual() -> None:
+    """Tests the bus factor metric against manually calculated value for openai/whisper-tiny model"""
+    m = ModelLinks("https://huggingface.co/openai/whisper-tiny/tree/main", None, None, "openai/whisper-tiny")
+    assert m != None
+    bf, _ = met.calculate_bus_factor(m)
+    assert bf != None
+    assert bf > .53 and bf < .55
