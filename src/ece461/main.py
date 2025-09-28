@@ -45,10 +45,10 @@ def main() -> int:
                 metrics_dict['license_latency'] = metric_result.get('latency_ms') or 0.0
             elif metric_name == 'ramp_up':
                 metrics_dict['ramp_up_time'] = metric_result.get('score') or 0.0
-                metrics_dict['ramp_up_latency'] = metric_result.get('latency_ms') or 0.0
+                metrics_dict['ramp_up_time_latency'] = metric_result.get('latency_ms') or 0.0
             elif metric_name == 'dataset_and_code_quality':
                 metrics_dict['dataset_and_code_score'] = metric_result.get('score') or 0.0
-                metrics_dict['dataset_and_code_latency'] = metric_result.get('latency_ms') or 0.0
+                metrics_dict['dataset_and_code_score_latency'] = metric_result.get('latency_ms') or 0.0
             elif metric_name == 'bus-factor':
                 metrics_dict['bus_factor'] = metric_result.get('score') or 0.0
                 metrics_dict['bus_factor_latency'] = metric_result.get('latency_ms') or 0.0
@@ -64,10 +64,19 @@ def main() -> int:
             elif metric_name == 'size':
                 # Size returns a dict of hardware compatibility scores
                 metrics_dict['size_scores'] = metric_result.get('score') or {}
-                metrics_dict['size_scores_latency'] = metric_result.get('latency_ms') or 0.0
+                metrics_dict['size_score_latency'] = metric_result.get('latency_ms') or 0.0
         net_score, latency = calculate_net_score(metrics_dict)
         metrics_dict['net_score'] = round(net_score, 2)
         metrics_dict['net_score_latency'] = latency
+        metrics_dict['net_score_latency'] = int(metrics_dict['net_score_latency'])
+
+        # Round latency values
+        latency_keys = [k for k in metrics_dict.keys() if 'latency' in k]
+        for key in latency_keys:
+            if metrics_dict[key] < 0.01:
+                metrics_dict[key] = 0
+            else:
+                metrics_dict[key] = int(metrics_dict[key])
 
         print(json.dumps(metrics_dict, separators=(',', ':')))
 
