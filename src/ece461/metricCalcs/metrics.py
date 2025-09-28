@@ -5,6 +5,7 @@ from huggingface_hub.errors import EntryNotFoundError, RepositoryNotFoundError, 
 from huggingface_hub.hf_api import ModelInfo
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Dict, Iterable, Optional, Tuple, Union, TypedDict, List
+from ece461.url_file_parser import ModelLinks 
 
 # ---- Metric calculation result data type ----
 class MetricValue(TypedDict, total=False):
@@ -63,7 +64,7 @@ def normalize(ret: ReturnType) -> MetricValue:
 
 # ---- Parallel runner: returns dict[name] -> MetricValue ----
 def run_metrics(
-    model_id: str,
+    model: ModelLinks,
     include: Optional[Iterable[str]] = None,
     exclude: Optional[Iterable[str]] = None,
 ) -> Dict[str, MetricValue]:
@@ -93,7 +94,7 @@ def run_metrics(
     def call(fn: Callable[..., ReturnType]) -> MetricValue:
         try:
             # Try calling with model_id first
-            ret = fn(model_id=model_id)  # type: ignore[arg-type]
+            ret = fn(model=model)  # type: ignore[arg-type]
             return normalize(ret)
         except Exception as e:
             logging.exception("Metric crashed")
@@ -108,6 +109,7 @@ def run_metrics(
             out[result[fut]] = fut.result()
 
     logging.info("Completed running metrics")
+    print("\n\nho\n\n")
     print(out)
     
     return out
