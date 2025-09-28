@@ -19,6 +19,7 @@ elif [[ "$cmd" == "test" ]]; then
   python3 "$ROOT/src/ece461/test_summary.py"
 
   # TODO: Format stdout output as required by autograder
+  python3 -m ece461.emmits_ndjson "$ROOT/samples/sample-input.txt"
 
 else
   python3 -m ece461.main "$cmd"
