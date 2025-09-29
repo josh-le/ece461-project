@@ -10,7 +10,7 @@ def calculate_net_score(metrics: dict) -> tuple[float, float]:
     start_time = time.perf_counter()
     
     # Take average of size scores
-    size_scores = metrics.get('size_scores', {})
+    size_scores = metrics.get('size_score', {})
     if size_scores and isinstance(size_scores, dict):
         avg_size_score = sum(size_scores.values()) / len(size_scores)
     else:

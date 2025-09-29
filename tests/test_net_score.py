@@ -18,7 +18,7 @@ def test_net_score_all_zeros():
             'performance_claims': 0.0,
             'code_quality': 0.0,
             'dataset_quality': 0.0,
-            'size_scores': {'raspberry_pi': 0.0, 'jetson_nano': 0.0, 'desktop_pc': 0.0, 'aws_server': 0.0}
+            'size_score': {'raspberry_pi': 0.0, 'jetson_nano': 0.0, 'desktop_pc': 0.0, 'aws_server': 0.0}
             }
 
     net_score, latency = calculate_net_score(metrics_dict)
@@ -39,7 +39,7 @@ def test_net_score_realistic_data():
             'performance_claims': 0.5,
             'code_quality': 0.3,
             'dataset_quality': 0.6,
-            'size_scores': {'raspberry_pi': 0.0, 'jetson_nano': 0.5, 'desktop_pc': 0.8, 'aws_server': 1.0}
+            'size_score': {'raspberry_pi': 0.0, 'jetson_nano': 0.5, 'desktop_pc': 0.8, 'aws_server': 1.0}
             }
 
     net_score, latency = calculate_net_score(metrics_dict)
