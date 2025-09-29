@@ -1,4 +1,4 @@
-from typing import Any, Callable, ContextManager, Dict
+from typing import Any, Callable, ContextManager, Dict, List, Tuple
 from pathlib import Path
 import types
 import pytest
@@ -320,3 +320,131 @@ def test_dataset_quality_different_platforms():
     # Both should be valid scores
     assert 0.0 <= hf_score <= 1.0
     assert 0.0 <= gh_score <= 1.0
+
+
+def test_normalize_error_path() -> None:
+    bad = met.normalize(None)  # type: ignore[arg-type]
+    assert bad["ok"] is False and bad["score"] is None
+
+
+def test_run_metrics_filters(monkeypatch: pytest.MonkeyPatch) -> None:
+    # register two dummy metrics taking model kwarg
+    def m1(*, model: Any) -> Tuple[float, float]: return (0.1, 2.0)
+    def m2(*, model: Any) -> Tuple[Dict[str, Any], float]: return ({"x": 1}, 3.0)
+    model = types.SimpleNamespace(model_id="org/name", code=None)
+
+    # swap the registry
+    orig = dict(met.REGISTRY)
+    met.REGISTRY.clear(); met.REGISTRY.update({"m1": m1, "m2": m2})
+    try:
+        only = met.run_metrics(model, include=["m1"])
+        assert set(only) == {"m1"} and only["m1"]["score"] == 0.1
+
+        not_m2 = met.run_metrics(model, exclude=["m2"])
+        assert set(not_m2) == {"m1"}
+
+        empty = met.run_metrics(model, include=["nope"])
+        assert empty == {}
+    finally:
+        met.REGISTRY.clear(); met.REGISTRY.update(orig)
+
+
+# ------------------------------ metrics: size / hardware -----------------
+
+def test_get_model_weight_size_variants(monkeypatch: pytest.MonkeyPatch) -> None:
+    # OK list
+    class R1:
+        def raise_for_status(self) -> None: ...
+        def json(self) -> List[Dict[str, Any]]:
+            return [
+                {"path":"a.bin", "type":"file", "size": 1_000_000},
+                {"path":"b", "type":"directory", "size": 0}
+            ]
+    monkeypatch.setattr(met.requests, "get", lambda *a, **k: R1())
+    mb = met.get_model_weight_size("x/y")
+    assert 0.9 < mb < 1.1
+
+    # not a list -> ValueError
+    class R2:
+        def raise_for_status(self) -> None: ...
+        def json(self) -> Dict[str, Any]:
+            return {"weird": True}
+    monkeypatch.setattr(met.requests, "get", lambda *a, **k: R2())
+    with pytest.raises(ValueError):
+        met.get_model_weight_size("x/y")
+
+    # list but no files -> ValueError
+    class R3:
+        def raise_for_status(self) -> None: ...
+        def json(self) -> List[Dict[str, Any]]:
+            return [{"path":"dir", "type":"directory", "size": 0}]
+    monkeypatch.setattr(met.requests, "get", lambda *a, **k: R3())
+    with pytest.raises(ValueError):
+        met.get_model_weight_size("x/y")
+
+
+def test_calculate_size_metric_ok_and_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    model = types.SimpleNamespace(model_id="x/y", code=None)
+    monkeypatch.setattr(met, "get_model_weight_size", lambda _m: 150.0)
+    details, lat = met.calculate_size_metric(model)
+    assert isinstance(details, dict) and lat >= 0
+    # error propagation -> ValueError
+    def boom(_m: str) -> float: raise RuntimeError("x")
+    monkeypatch.setattr(met, "get_model_weight_size", boom)
+    with pytest.raises(ValueError):
+        met.calculate_size_metric(model)
+
+
+def test_hardware_threshold_edges() -> None:
+    # hit boundaries
+    for val in (50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 12345.0):
+        s = met.calculate_hardware_compatibility_scores(val)
+        assert set(s) == {"raspberry_pi","jetson_nano","desktop_pc","aws_server"}
+        assert all(0.0 <= v <= 1.0 for v in s.values())
+
+# ------------------------------ metrics: dataset/code/dataset_quality ----
+
+def test_dataset_and_code_score_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    # none provided -> score 0
+    model_none = types.SimpleNamespace(model_id="x/y", code=None, dataset=None)
+    s0, _ = met.calculate_dataset_and_code_score(model_none)
+    assert s0 == 0.0
+
+    # ok json
+    model = types.SimpleNamespace(model_id="x/y", code="https://gh", dataset="https://hf")
+    monkeypatch.setattr(met.llm_api, "query_llm", lambda p: '{"dataset_code_score":0.73}')
+    s1, _ = met.calculate_dataset_and_code_score(model)
+    assert 0.72 <= s1 <= 0.74
+
+    # bad json / extraction -> 0
+    monkeypatch.setattr(met.llm_api, "query_llm", lambda p: 'not-json')
+    s2, _ = met.calculate_dataset_and_code_score(model)
+    assert s2 == 0.0
+
+
+def test_dataset_quality_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    # none -> 0
+    model_none = types.SimpleNamespace(model_id="x/y", dataset=None, code=None)
+    s0, _ = met.calculate_dataset_quality(model_none)
+    assert s0 == 0.0
+
+    # ok json
+    model = types.SimpleNamespace(model_id="x/y", dataset="https://datasets", code=None)
+    monkeypatch.setattr(met.llm_api, "query_llm", lambda p: '{"dataset_quality_score":0.66}')
+    s1, _ = met.calculate_dataset_quality(model)
+    assert 0.65 <= s1 <= 0.67
+
+    # exception from LLM -> 0
+    def bad(_p: str) -> str: raise RuntimeError("boom")
+    monkeypatch.setattr(met.llm_api, "query_llm", bad)
+    s2, _ = met.calculate_dataset_quality(model)
+    assert s2 == 0.0
+
+
+# ------------------------------ metrics: code_quality no-code --------------
+
+def test_code_quality_no_code() -> None:
+    model = types.SimpleNamespace(model_id="x/y", code=None)
+    score, lat = met.calculate_code_quality(model)
+    assert score == 0.0 and lat >= 0.0
+
