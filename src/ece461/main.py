@@ -75,7 +75,8 @@ def main() -> int:
                 metrics_dict['size_score_latency'] = metric_result.get('latency_ms') or 0.0
         net_score, _ = calculate_net_score(metrics_dict)
         end_time = time.perf_counter()
-        latency = (start_time - end_time) * 1000
+        latency = (end_time - start_time) * 1000
+        print(latency)
         metrics_dict['net_score'] = round(net_score, 2)
         metrics_dict['net_score_latency'] = latency
         metrics_dict['net_score_latency'] = int(metrics_dict['net_score_latency'])
