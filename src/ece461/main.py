@@ -19,8 +19,11 @@ def main() -> int:
     for m in models:
         start_time = time.perf_counter()
         results = met.run_metrics(m)
+
+        model_name = m.model_id.split('/')[-1] if '/' in m.model_id else m.model_id
+
         # Create dict of metric results to pass to net score
-        metrics_dict = {"name": m.model_id, "category": "MODEL", 
+        metrics_dict = {"name": model_name, "category": "MODEL", 
         "net_score": 0.0,
         "net_score_latency": 0.0,
         "ramp_up_time": 0.0,
