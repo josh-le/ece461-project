@@ -1,3 +1,4 @@
+
 # ece461/logging_setup.py
 import logging, os, sys
 from pathlib import Path
@@ -9,6 +10,7 @@ def setup() -> None:
         if not log_file.is_absolute():
             log_file = Path(__file__).resolve().parents[2] / log_file
     else:
+
         logging.error("Invalid LOG_FILE Path")
         sys.exit(1)
 
@@ -24,7 +26,6 @@ def setup() -> None:
         logging.error(f"Invalid LOG_FILE: {e}")
         sys.exit(1)
     # ----------------------------------------------------------------------
-
     lvl = os.getenv("LOG_LEVEL", "0").strip()
     if lvl == "2":
         level = logging.DEBUG
