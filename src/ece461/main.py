@@ -30,7 +30,7 @@ def main() -> int:
         "performance_claims_latency": 0.0,
         "license": 0.0,
         "license_latency": 0.0,
-        "size_scores": {},
+        "size_score": {},
         "size_score_latency": 0.0,
         "dataset_and_code_score": 0.0,
         "dataset_and_code_score_latency": 0.0,
@@ -65,7 +65,7 @@ def main() -> int:
                 # Size returns a dict of hardware compatibility scores
                 size_data = metric_result.get('score') or {}
 
-                metrics_dict['size_scores'] = {
+                metrics_dict['size_score'] = {
                     "raspberry_pi": float(size_data.get("raspberry_pi", 0.0)),
                     "jetson_nano": float(size_data.get("jetson_nano", 0.0)), 
                     "desktop_pc": float(size_data.get("desktop_pc", 0.0)),
