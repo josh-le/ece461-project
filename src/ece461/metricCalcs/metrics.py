@@ -169,15 +169,6 @@ def get_doc_score(model_card_text: str) -> float:
         return 0.2
     return 0.1
 
-def get_author_score(author: str) -> float:
-    """Calculates the author authority score."""
-    # List of well-known organizations
-    known_orgs: List[str] = ["google", "meta", "microsoft", "openai"]
-    if author in known_orgs:
-        return 1.0
-    # Add other checks here if needed, e.g., for GTE-validated users
-    return 0.5 # Default for individual users
-
 def get_repro_score(filenames: List[str]) -> float:
     """Calculates the reproducibility score based on repository files."""
     has_weights: bool = any(f.endswith(('.bin', '.safetensors')) for f in filenames)
@@ -211,30 +202,26 @@ def calculate_bus_factor(model: ModelLinks) -> tuple[float, float]:
     
     start_time = time.perf_counter()
     readme_content: str = info.cardData.get('text', '') if info.cardData else ''
-    author: str = info.author
     filenames: List[str] = [f.rfilename for f in info.siblings]
     downloads: Optional[int] = info.downloads
 
     s_doc: float = get_doc_score(readme_content)
-    s_author: float = get_author_score(author)
     s_repro: float = get_repro_score(filenames)
     s_community: float = get_community_score(downloads)
     
     weights: Dict[str, float] = {
         'doc': 0.35,
-        'author': 0.30,
-        'repro': 0.25,
-        'community': 0.10
+        'repro': 0.35,
+        'community': 0.30
     }
     
     final_score: float = (weights['doc'] * s_doc +
-                          weights['author'] * s_author +
                           weights['repro'] * s_repro +
                           weights['community'] * s_community)
                    
     end_time = time.perf_counter()
     latency = (end_time - start_time) * 1000  # Convert to milliseconds
-    logging.info("Ramp-up metric latency for model %s: %.2f ms", model.model_id, latency)
+    logging.info("Bus factor metric latency for model %s: %.2f ms", model.model_id, latency)
     return (round(final_score, 2), round(latency))
 
 @metric("license")
