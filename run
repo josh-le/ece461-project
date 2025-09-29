@@ -21,6 +21,6 @@ elif [[ "$cmd" == "test" ]]; then
   exit 0
 
 else
-  python3 -m ece461.main "$cmd"
+  python3 "$ROOT/src/ece461/main.py" "$cmd"
   exit 0
 fi
