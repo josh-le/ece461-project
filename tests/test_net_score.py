@@ -49,3 +49,20 @@ def test_net_score_realistic_data():
     assert latency >= 0
     assert isinstance(net_score, float)
     assert isinstance(latency, (int, float))
+
+# ------------------------------ net_score clamp + avg size ----------------
+
+def test_net_score_clamp_and_size_avg() -> None:
+    metrics = {
+        "license": 1.0,
+        "ramp_up_time": 1.0,
+        "dataset_and_code_score": 1.0,
+        "bus_factor": 1.0,
+        "performance_claims": 1.0,
+        # NOTE: scorer expects 'size_score' (singular) for the map:
+        "size_score": {"a": 1.0, "b": 0.0},  # avg = 0.5
+        "code_quality": 1.0,
+        "dataset_quality": 1.0,
+    }
+    total, latency = calculate_net_score(metrics)
+    assert 0.0 <= total <= 1.0 and latency >= 0
