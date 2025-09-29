@@ -1,4 +1,4 @@
-import sys, time, os
+import sys, time, os, re
 import logging
 import json
 from ece461.logging_setup import setup as setup_logging
@@ -10,19 +10,19 @@ from typing import List
 def main() -> int:
     # 1) Turn logging on/off based on env vars (LOG_LEVEL / LOG_FILE)
 
-
     setup_logging()
     log = logging.getLogger("ece461.main")
     log.info("Logging is enabled")
     log.debug("Debug logging is enabled")
 
-    if not os.getenv("GITHUB_TOKEN"):
-        log.exception("Missing GITHUB_TOKEN.")
+    gh_token = os.getenv("GITHUB_TOKEN")
+    if not gh_token or not bool(re.fullmatch(r'^(gh[pousr]_)?[A-Za-z0-9_]{20,80}$', gh_token)):
+        log.exception("bad GITHUB_TOKEN.")
         sys.exit(1)
 
     logpath = os.getenv("LOG_FILE")
-    if not logpath:
-        log.exception("Missing LOG_FILE")
+    if not logpath or not os.path.isdir(os.path.dirname(logpath)):
+        log.exception("bad LOG_FILE")
         sys.exit(1)
 
     models: List[ModelLinks] = parse_url_file(sys.argv[1])
