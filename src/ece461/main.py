@@ -1,4 +1,4 @@
-import sys
+import sys, time
 import logging
 import json
 from ece461.logging_setup import setup as setup_logging
@@ -17,6 +17,7 @@ def main() -> int:
     models: List[ModelLinks] = parse_url_file(sys.argv[1])
       
     for m in models:
+        start_time = time.perf_counter()
         results = met.run_metrics(m)
         # Create dict of metric results to pass to net score
         metrics_dict = {"name": m.model_id, "category": "MODEL", 
@@ -72,7 +73,9 @@ def main() -> int:
                     "aws_server": float(size_data.get("aws_server", 0.0))
                 }
                 metrics_dict['size_score_latency'] = metric_result.get('latency_ms') or 0.0
-        net_score, latency = calculate_net_score(metrics_dict)
+        net_score, _ = calculate_net_score(metrics_dict)
+        end_time = time.perf_counter()
+        latency = (start_time - end_time) * 1000
         metrics_dict['net_score'] = round(net_score, 2)
         metrics_dict['net_score_latency'] = latency
         metrics_dict['net_score_latency'] = int(metrics_dict['net_score_latency'])
