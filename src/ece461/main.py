@@ -20,11 +20,6 @@ def main() -> int:
         log.exception("bad GITHUB_TOKEN.")
         sys.exit(1)
 
-    logpath = os.getenv("LOG_FILE")
-    if not logpath or not os.path.isdir(os.path.dirname(logpath)):
-        log.exception("bad LOG_FILE")
-        sys.exit(1)
-
     models: List[ModelLinks] = parse_url_file(sys.argv[1])
       
     for m in models:
